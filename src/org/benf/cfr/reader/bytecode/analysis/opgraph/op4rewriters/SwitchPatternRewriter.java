@@ -618,21 +618,29 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             StructuredStatement s = branch.getStatement();
             if (!(s instanceof StructuredCase)) return null;
             StructuredCase cays = (StructuredCase) s;
-            List<Expression> values = cays.getValues();
-            for (Expression value : values) {
-                Integer i = getValue(value);
-                if (i == null) return null;
-                if (i == -1) {
-                    nul = cays;
-                    continue;
-                }
-                if (i >= argList.size()) return null;
-                cases.put(i, cays);
-            }
-            if (values.isEmpty()) {
+            if (cays.isDefault()) {
                 defalt = cays;
+            } else {
+                List<Expression> values = cays.getValues();
+                for (Expression value : values) {
+                    Integer i = getValue(value);
+                    if (i == null) return null;
+                    if (i == -1) {
+                        nul = cays;
+                        continue;
+                    }
+                    if (i >= argList.size()) return null;
+                    cases.put(i, cays);
+                }
             }
         }
+
+        // If no branch for 'case null' exists, add one because `SwitchBootstraps` allows null values;
+        // otherwise the dumped code would erroneously fail with a NullPointerException
+        if (nul == null && defalt != null) {
+            defalt.markHandlesNull();
+        }
+
         // If there's a size mismatch, pad it out with 'default' for the missing branch.
         // BUT - a default can legitimately exist.
         if (argList.size() == cases.size() + 1) {
