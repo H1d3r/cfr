@@ -3,6 +3,7 @@ package org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters;
 import org.benf.cfr.reader.bytecode.BytecodeMeta;
 import org.benf.cfr.reader.bytecode.analysis.loc.BytecodeLoc;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.Op04StructuredStatement;
+import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.LocalUsageCheck;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.StructuredStatementTransformer;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.util.MiscStatementTools;
 import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
@@ -23,6 +24,7 @@ import org.benf.cfr.reader.bytecode.analysis.structured.StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.structured.expression.StructuredCaseDefinitionExpression;
 import org.benf.cfr.reader.bytecode.analysis.structured.expression.StructuredCaseUnassignedExpression;
 import org.benf.cfr.reader.bytecode.analysis.structured.statement.*;
+import org.benf.cfr.reader.bytecode.analysis.types.BindingSuperContainer;
 import org.benf.cfr.reader.bytecode.analysis.types.JavaTypeInstance;
 import org.benf.cfr.reader.bytecode.analysis.types.TypeConstants;
 import org.benf.cfr.reader.bytecode.analysis.types.discovery.InferredJavaType;
@@ -75,6 +77,9 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         public List<Op04StructuredStatement> blkstm;
         // will be one of blkstm.
         public Op04StructuredStatement flattenConditional;
+        // Potentially, locals that we can discard once we've done our
+        // transform.... but maybe not!
+        public List<Op04StructuredStatement> predeclarationNops;
         List<Integer> cases;
         List<Expression> replacements;
         GatheredType type = GatheredType.None;
@@ -305,6 +310,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         // We rely VERY heavily on pattern of assignments.
         //
 
+        List<Op04StructuredStatement> predeclarationNops = ListFactory.newList();
         List<Op04StructuredStatement> flushableNops = ListFactory.newList();
         // TODO: This could (if we've not stripped out of desperation) be in a matchException block.
         Map<LValue, MemberFunctionInvokation> destructure = MapFactory.newOrderedMap();
@@ -328,7 +334,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                 StructuredDefinition sd = (StructuredDefinition)s;
                 defined.put(sd.getLvalue(), stm);
                 if (defnAssignement == null) {
-                    gathered.additionalNops.add(stm);
+                    predeclarationNops.add(stm);
                 } else {
                     flushableNops.add(stm);
                 }
@@ -361,6 +367,10 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                     gathered.additionalNops.add(stm);
                     continue;
                 } else {
+                    BindingSuperContainer bc = defnAssignement.getInferredJavaType().getJavaTypeInstance().getBindingSupers();
+                    if (bc == null || !bc.containsBase(TypeConstants.RECORD)) {
+                        break;
+                    }
                     if (!extractDestructuringChain(sa, defnAssignement, destructure, defined, flushableNops, stm)) {
                         break;
                     }
@@ -380,6 +390,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
          *
          * Note, subsequent to this, we can (and likely will!) have when blocks.
          */
+        gathered.predeclarationNops = predeclarationNops;
         if (destructure.isEmpty()) {
             gathered.type = GatheredType.Variable;
             return contentidx;
@@ -423,6 +434,8 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             MemberFunctionInvokation tmp = destructure.get(((LValueExpression) rhs).getLValue());
             if (tmp != null) rhs = tmp;
         }
+        // If we're calling a member, are we destructuring a record? Or are we just calling a plausible looking function
+        // consider SwitchPatternRegression2.
         if (rhs instanceof MemberFunctionInvokation) {
             MemberFunctionInvokation mf = (MemberFunctionInvokation)rhs;
             Expression mfe = mf.getObject();
@@ -727,12 +740,45 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                     cas.getValues().add(caseValue);
                 }
             }
+            // Now, examine the body that remains.
+            // If predeclarationNops exist, we can probably delete them, if they're never *read*.
+            // We count a single use as not read.
+            // eg
+            // local foo
+            // a = foo = bar();
+            // We could do this with a general purpose pointless local remover.
+            if (g.predeclarationNops != null) {
+                removePointlessVars(g.predeclarationNops, cas.getBody());
+            }
         }
 
         // if defalt is still set, it's a legit default.
         if (nul != null) {
             nul.getValues().clear();
             nul.getValues().add(new Literal(TypedLiteral.getNull()));
+        }
+    }
+
+    private void removePointlessVars(List<Op04StructuredStatement> predeclarationNops, Op04StructuredStatement body) {
+        if (predeclarationNops.isEmpty()) return;
+        List<LValue> lValues = Functional.map(predeclarationNops, new UnaryFunction<Op04StructuredStatement, LValue>() {
+            @Override
+            public LValue invoke(Op04StructuredStatement arg) {
+                return ((StructuredDefinition)arg.getStatement()).getLvalue();
+            }
+        });
+        LocalUsageCheck lc = new LocalUsageCheck(lValues);
+        body.transform(lc, new StructuredScope());
+        for (Op04StructuredStatement stm : predeclarationNops) {
+            LValue lv =  ((StructuredDefinition)stm.getStatement()).getLvalue();
+            int count = lc.usage(lv);
+            if (count == 0) {
+                stm.nopOut();
+            } else if (count == 1) {
+                if (lc.rewriteAway(lv)) {
+                    stm.nopOut();
+                }
+            }
         }
     }
 
