@@ -12,6 +12,8 @@ import org.benf.cfr.reader.bytecode.analysis.parse.Pattern;
 import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.*;
 import org.benf.cfr.reader.bytecode.analysis.parse.literal.TypedLiteral;
+import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
+import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StackSSALabel;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StaticVariable;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.RecordPattern;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.TypePattern;
@@ -345,7 +347,23 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                 if (defnAssignement == null) {
                     LValue lv = sa.getLvalue();
                     if (!sa.isCreator(lv)) {
-                        return null;
+                        // It shouldn't be possible NOT to be the creator, if we're using a pattern
+                        // match.
+                        // In SwitchPatternRegression3, the variable which is being assigned to is already
+                        // in the outer scope. (which is not correct, but likely due to mislabelling of lifetimes).
+                        // This should be vanishingly rare, so we'll introduce a temporary.
+                        LValue tmp = new LocalVariable("cfr_tmp", lv.getInferredJavaType());
+                        StructuredAssignment sa2 = new StructuredAssignment(sa.getCombinedLoc(), tmp, sa.getRvalue(), true);
+                        stm.replaceStatement(sa2);
+                        StructuredAssignment ae = new StructuredAssignment(sa.getCombinedLoc(), lv, new LValueExpression(tmp));
+                        Op04StructuredStatement ins = new Op04StructuredStatement(stm.getIndex().justAfter(), stm.getBlockMembership(), ae);
+                        Op04StructuredStatement prevT = stm.getTargets().get(0);
+                        stm.replaceTarget(prevT, ins);
+                        prevT.replaceSource(stm, ins);
+                        ins.addSource(stm);
+                        ins.addTarget(prevT);
+                        blkstm.add(contentidx, ins);
+                        lv = tmp;
                     }
                     JavaTypeInstance sat = sa.getLvalue().getInferredJavaType().getJavaTypeInstance();
                     if (!sat.equals(replacementType)) {
