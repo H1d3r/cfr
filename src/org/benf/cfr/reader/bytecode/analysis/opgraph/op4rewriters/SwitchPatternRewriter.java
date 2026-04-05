@@ -13,7 +13,6 @@ import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.*;
 import org.benf.cfr.reader.bytecode.analysis.parse.literal.TypedLiteral;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
-import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StackSSALabel;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StaticVariable;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.RecordPattern;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.TypePattern;
@@ -98,11 +97,14 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
     static class CaseCollection {
         final Map<Integer, StructuredCase> cases;
         StructuredCase defalt;
+        // There can't be a nul branch AND A default handles null.
+        StructuredCase nullHandlingDefalt;
         StructuredCase nul;
 
-        CaseCollection(Map<Integer, StructuredCase> cases, StructuredCase defalt, StructuredCase nul) {
+        CaseCollection(Map<Integer, StructuredCase> cases, StructuredCase defalt, StructuredCase nullHandlingDefalt, StructuredCase nul) {
             this.cases = cases;
             this.defalt = defalt;
+            this.nullHandlingDefalt = nullHandlingDefalt;
             this.nul = nul;
         }
     }
@@ -616,11 +618,15 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // Apply the gathered results - rebuild case values.
-        applyGatheredResults(rev, cc.nul);
+        applyGatheredResults(rev, cc);
 
         // Rebuild the switch statement.
         Op04StructuredStatement resultContainer = switchStatement.getContainer();
         BlockIdentifier resultBlock = swatch.getBlockIdentifier();
+        // We're 100% certain this was a switch we can replace - if there was a control loop, we
+        // can remove the identifier IF it's not used elsewhere.  Since that's just removing a (hopefully)
+        // unused variable (i.e. not semantically relevant to this switch statement transformation) let's
+        // leave that for a later pass. (however, release enough references to ensure the loop is removed)
         if (controlLoopContainer != null) {
             resultContainer = controlLoopContainer;
             resultBlock = controlBlock;
@@ -667,10 +673,9 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // If no branch for 'case null' exists, add one because `SwitchBootstraps` allows null values;
-        // otherwise the dumped code would erroneously fail with a NullPointerException
-        if (nul == null && defalt != null) {
-            defalt.markHandlesNull();
-        }
+        // otherwise the dumped code would erroneously fail with a NullPointerException.
+        // Note - below we clear defalt.
+        StructuredCase nullHandlingDefault = (nul == null && defalt != null) ? defalt : null;
 
         // If there's a size mismatch, pad it out with 'default' for the missing branch.
         // BUT - a default can legitimately exist.
@@ -686,7 +691,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                 }
             }
         }
-        return new CaseCollection(cases, defalt, nul);
+        return new CaseCollection(cases, defalt, nullHandlingDefault, nul);
     }
 
     // Find the single block that all control continues target, or null if they disagree.
@@ -727,7 +732,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
 
     // Apply the gathered analysis to each case: flatten conditionals, nop out consumed
     // statements, and replace integer case labels with pattern/type expressions.
-    private void applyGatheredResults(Map<StructuredCase, Gathered> rev, StructuredCase nul) {
+    private void applyGatheredResults(Map<StructuredCase, Gathered> rev, CaseCollection cc) {
         for (Gathered g : rev.values()) {
             StructuredCase cas = g.cas;
             // The body of this conditional needs to be lifted into its parent.
@@ -771,9 +776,11 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // if defalt is still set, it's a legit default.
-        if (nul != null) {
-            nul.getValues().clear();
-            nul.getValues().add(new Literal(TypedLiteral.getNull()));
+        if (cc.nul != null) {
+            cc.nul.getValues().clear();
+            cc.nul.getValues().add(new Literal(TypedLiteral.getNull()));
+        } else if (cc.nullHandlingDefalt != null) {
+            cc.nullHandlingDefalt.markHandlesNull();
         }
     }
 
