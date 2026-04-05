@@ -35,15 +35,18 @@ import org.benf.cfr.reader.entities.ClassFileField;
 import org.benf.cfr.reader.state.DCCommonState;
 import org.benf.cfr.reader.util.ClassFileVersion;
 import org.benf.cfr.reader.util.ConfusedCFRException;
+import org.benf.cfr.reader.util.MiscConstants;
 import org.benf.cfr.reader.util.collections.Functional;
 import org.benf.cfr.reader.util.collections.ListFactory;
 import org.benf.cfr.reader.util.collections.MapFactory;
+import org.benf.cfr.reader.util.collections.SetFactory;
 import org.benf.cfr.reader.util.functors.Predicate;
 import org.benf.cfr.reader.util.functors.UnaryFunction;
 import org.benf.cfr.reader.util.getopt.Options;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class SwitchPatternRewriter  implements Op04Rewriter {
     private final Options options;
@@ -633,11 +636,129 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             controlBlock.releaseForeignRefs(controlRefCnt);
         }
 
+        // Now we've released foreign refs, we should be able to walk linearly backwards from the switch
+        // and collect a few facts.
+        originalSwitchValue = detectPreSwitchSugar(switchStatement.getContainer(), originalSwitchValue, cc);
+
         resultContainer.replaceStatement(new StructuredSwitch(
                 BytecodeLoc.TODO,
                 originalSwitchValue,
                 swatch.getBody(),
                 resultBlock, false));
+    }
+
+    //
+    // We often end up with code like
+    /*
+            Object object = o;
+            Objects.requireNonNull(object);
+            Object object2 = object;
+            int n = 0;
+            switch ((Object)object2) {
+     */
+
+    private LValue followChain(Map<LValue, LValue> lvs, LValue start) {
+        LValue current = start;
+        Set<LValue> tested = SetFactory.newSet();
+        while (true) {
+            if (!tested.add(current)) return current;
+            if (!lvs.containsKey(current)) return current;
+            current = lvs.get(current);
+        }
+    }
+
+    // Here, object and object2 are effectively pointless aliases, (we won't remove, just note this).
+    // The non-null can be removed if we have a null handling default in the switch, by removing null handling.
+    private Expression detectPreSwitchSugar(Op04StructuredStatement container, Expression originalSwitchValue, CaseCollection cc) {
+        Op04StructuredStatement current = container;
+
+        originalSwitchValue = CastExpression.tryRemoveCast(originalSwitchValue);
+        if (!(originalSwitchValue instanceof LValueExpression)) {
+            return originalSwitchValue;
+        }
+        LValue ose = ((LValueExpression) originalSwitchValue).getLValue();
+
+        LValue checkedNotNull = null;
+        Op04StructuredStatement checkContainer = null;
+        Map<LValue, LValue> definedBy = MapFactory.newMap();
+        while (current.getSources().size() == 1) {
+            Op04StructuredStatement pre = current.getSources().get(0);
+            if (pre.getTargets().size() != 1) break;
+            if (pre.getTargets().get(0) != current) break;
+            if (current == container) {
+                current = pre;
+                continue;
+            }
+            // Validate that this is either a comment
+            StructuredStatement st = current.getStatement();
+            if (st instanceof StructuredComment) {
+                // ignore.
+                current = pre;
+                continue;
+            }
+            // A simple assignment lv <- lv
+            if (st instanceof StructuredAssignment) {
+                // We could check for creator too, but since we're not REMOVING these, just checking if we can bypass
+                // it is uneccessarily restrictive.
+                LValue lv = ((StructuredAssignment) st).getLvalue();
+                Expression rve = ((StructuredAssignment) st).getRvalue();
+                if (rve instanceof Literal) {
+                    // Allow this - it's likely the loop recovery variable.
+                } else if (rve instanceof LValueExpression) {
+                    LValue rv = ((LValueExpression) rve).getLValue();
+                    if (definedBy.containsKey(lv)) break;
+                    if (definedBy.containsKey(rv)) break;
+                    if (lv.equals(rv)) break;
+                    definedBy.put(lv, rv);
+                } else {
+                    break;
+                }
+
+                current = pre;
+                continue;
+            }
+            // or the ONE requireNonNull.
+            if (st instanceof StructuredExpressionStatement) {
+                if (checkedNotNull != null) break;
+                Expression e = ((StructuredExpressionStatement) st).getExpression();
+                if (!(e instanceof StaticFunctionInvokation)) break;
+                StaticFunctionInvokation sf = (StaticFunctionInvokation)e;
+                if (!sf.getClazz().equals(TypeConstants.OBJECTS)) break;
+                if (!(sf.getMethodPrototype().getName().equals(MiscConstants.REQUIRE_NON_NULL) && sf.getArgs().size() == 1))
+                    break;
+                Expression ea = sf.getArgs().get(0);
+                if (!(ea instanceof LValueExpression)) break;
+                checkedNotNull = ((LValueExpression) ea).getLValue();
+                checkContainer = current;
+                current = pre;
+                continue;
+
+            }
+            break;
+        }
+
+        LValue earliest = followChain(definedBy, ose);
+
+        if (checkedNotNull != null) {
+            if (cc.nullHandlingDefalt != null && cc.nullHandlingDefalt.handlesNull()) {
+                LValue earliestChecked = followChain(definedBy, checkedNotNull);
+                if (earliestChecked.equals(earliest)) {
+                    // We can nop out the checknotnull, and cancel the null handler.
+                    checkContainer.nopOut();
+                    cc.nullHandlingDefalt.markHandlesNull(false);
+                }
+            }
+        }
+
+        if (!earliest.equals(ose)) {
+            Map<LValue, LValue> replace = MapFactory.newMap();
+            replace.put(ose, earliest);
+
+            originalSwitchValue = originalSwitchValue.applyExpressionRewriter(new LValueReplacingRewriter(replace), null, container, null);
+        }
+
+        // walk these backwards (which is list order) - we allow ONLY simple
+        return originalSwitchValue;
     }
 
     // Parse the switch branches into a map of index->case, plus default and null cases.
@@ -780,7 +901,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             cc.nul.getValues().clear();
             cc.nul.getValues().add(new Literal(TypedLiteral.getNull()));
         } else if (cc.nullHandlingDefalt != null) {
-            cc.nullHandlingDefalt.markHandlesNull();
+            cc.nullHandlingDefalt.markHandlesNull(true);
         }
     }
 
