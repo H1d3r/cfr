@@ -5,6 +5,7 @@ import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.LValueExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
 import org.benf.cfr.reader.bytecode.analysis.types.JavaTypeInstance;
+import org.benf.cfr.reader.util.annotation.Nullable;
 import org.benf.cfr.reader.util.functors.Predicate;
 
 import java.util.regex.Pattern;
@@ -46,6 +47,10 @@ public class MiscUtils {
      * up by letting code analysers say we're no good kids, hanging around wasting time.
      */
     public static void handyBreakPoint() {
+    }
+
+    public static boolean objectsEquals(@Nullable Object o1, @Nullable Object o2) {
+        return o1 == o2 || o1 != null && o1.equals(o2);
     }
 
     public static boolean isThis(Expression obj, JavaTypeInstance thisType) {
