@@ -996,6 +996,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
             // TODO: Common code ClassFileDumperRecord
         } catch (ConfusedCFRException ce) {
             // Ok - if we can't load it, can we guess? Should we?
+            // TODO : Return a placeholder which makes it obvious.
             return null;
         }
         List<ClassFileField> fields = Functional.filter(c.getFields(), new Predicate<ClassFileField>() {
@@ -1005,9 +1006,6 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
             }
         });
         Map<MemberFunctionInvokation, LValue> assign = g.recordKeys;
-        if (assign.size() != fields.size()) {
-            return null;
-        }
         Map<String, LValue> keyByName = MapFactory.newMap();
         for (Map.Entry<MemberFunctionInvokation, LValue> entry : assign.entrySet()) {
             keyByName.put(entry.getKey().getName(), entry.getValue());
@@ -1017,9 +1015,11 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
             String name = field.getFieldName();
             LValue lv = keyByName.get(name);
             if (lv == null) {
-                return null;
+                InferredJavaType ijtField = new InferredJavaType(field.getField().getJavaTypeInstance(), InferredJavaType.Source.UNKNOWN);
+                lvs.add(new RecordPattern.RecordPatternPlaceholder(ijtField));
+            } else {
+                lvs.add(lv);
             }
-            lvs.add(lv);
         }
         return new RecordPattern(g.definitionLvalue, lvs);
     }
@@ -1189,7 +1189,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
         in.transformStructuredChildren(this, scope);
         // Check for statement replace.
         if (controlLoopReplaces.containsKey(in.getContainer())) {
-            in = controlLoopReplaces.get(in.getContainer());
+            return controlLoopReplaces.get(in.getContainer());
         }
 
         if (!(in instanceof StructuredSwitch)) {
@@ -1203,8 +1203,16 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
 
         /*
          * Post transform refactoring - if we have a further switch inside us, we want to lift their branches.
-         *
          */
+        StructuredStatement res2 = postProcessOneSwatch(res);
+        if (res2 != null) {
+            res = res2;
+        }
+
         return res;
+    }
+
+    private StructuredStatement postProcessOneSwatch(StructuredStatement res) {
+        return null;
     }
 }

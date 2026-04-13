@@ -55,6 +55,7 @@ public class WildcardMatch {
     private Map<String, CastExpressionWildcard> castWildcardMap = MapFactory.newMap();
     private Map<String, ConditionalExpressionWildcard> conditionalWildcardMap = MapFactory.newMap();
     private Map<String, BlockWildcard> blockWildcardMap = MapFactory.newMap();
+    private Map<String, DeepAssignment> deepAssignmentMap = MapFactory.newMap();
 
     private <T> void reset(Collection<? extends Wildcard<T>> coll) {
         for (Wildcard<T> item : coll) {
@@ -79,6 +80,7 @@ public class WildcardMatch {
         reset(conditionalWildcardMap.values());
         reset(blockWildcardMap.values());
         reset(arithMutationMap.values());
+        reset(deepAssignmentMap.values());
     }
 
     public BlockWildcard getBlockWildcard(String name) {
@@ -310,6 +312,15 @@ public class WildcardMatch {
 
     public boolean match(Object pattern, Object test) {
         return pattern.equals(test);
+    }
+
+    public DeepAssignment findDeepAssignment(String assignSearch, LValueExpression obj) {
+        if (deepAssignmentMap.containsKey(assignSearch)) {
+            return deepAssignmentMap.get(assignSearch);
+        }
+        DeepAssignment res = new DeepAssignment(obj);
+        deepAssignmentMap.put(assignSearch, res);
+        return res;
     }
 
     private static class DebugDumpable implements Dumpable {
@@ -595,6 +606,140 @@ public class WildcardMatch {
         @Override
         public <T> T visit(ExpressionVisitor<T> visitor) {
             return visitor.visit(this);
+        }
+    }
+
+    public static class DeepAssignment extends AbstractBaseExpressionWildcard implements ConditionalExpression, Wildcard<ConditionalExpression>, ExpressionRewriter {
+        private final LValueExpression rhs;
+        private LValue lhs;
+        private ConditionalExpression matchedValue;
+        private AssignmentExpression foundAssignment;
+
+        // Can't go down RHS of Disjunction
+        // (s = a).foo() || ( 1 < 3 || 5 > 6)
+        // 3 > 1 || (s = a).foo()
+
+        public DeepAssignment(LValueExpression rhs) {
+            super();
+            this.rhs = rhs;
+        }
+
+        public AssignmentExpression getFoundAssignment() {
+            return foundAssignment;
+        }
+        
+        @Override
+        public ConditionalExpression getMatch() {
+            return matchedValue;
+        }
+
+        @Override
+        public void resetMatch() {
+            matchedValue = null;
+            foundAssignment = null;
+        }
+
+        @Override
+        public ConditionalExpression getNegated() {
+            return null;
+        }
+
+        @Override
+        public int getSize(Precedence outerPrecedence) {
+            return 0;
+        }
+
+        @Override
+        public ConditionalExpression getDemorganApplied(boolean amNegating) {
+            return null;
+        }
+
+        @Override
+        public ConditionalExpression getRightDeep() {
+            return null;
+        }
+
+        @Override
+        public Set<LValue> getLoopLValues() {
+            return new HashSet<LValue>();
+        }
+
+        @Override
+        public ConditionalExpression optimiseForType() {
+            return null;
+        }
+
+        @Override
+        public ConditionalExpression simplify() {
+            return null;
+        }
+
+        // Take ANY conditional expression - search it for (BEFORE USE) an assignment to
+        // obj.  We can't do a disjunction.
+
+
+        @Override
+        public Expression rewriteExpression(Expression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            if (lhs != null) return expression;
+            if (expression instanceof AssignmentExpression) {
+                AssignmentExpression ae = (AssignmentExpression)expression;
+                Expression aeRv = ae.getrValue();
+                aeRv = CastExpression.alwaysRemoveCast(aeRv);
+                if (rhs.equals(aeRv)) {
+                    lhs = ae.getlValue();
+                    foundAssignment = ae;
+                    return expression;
+                }
+            }
+            expression.applyExpressionRewriter(this, ssaIdentifiers, statementContainer, flags);
+            return expression;
+        }
+
+        @Override
+        public ConditionalExpression rewriteExpression(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            if (lhs != null) return expression;
+            if (expression instanceof BooleanOperation) {
+                BooleanOperation bo = (BooleanOperation)expression;
+                if (bo.getOp() == BoolOp.OR) {
+                    bo.getLhs().applyExpressionRewriter(this, ssaIdentifiers, statementContainer, flags);
+                    return expression;
+                }
+            }
+            expression.applyExpressionRewriter(this, ssaIdentifiers, statementContainer, flags);
+            return expression;
+        }
+
+        @Override
+        public LValue rewriteExpression(LValue lValue, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            return lValue;
+        }
+
+        @Override
+        public StackSSALabel rewriteExpression(StackSSALabel lValue, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            return lValue;
+        }
+
+        @Override
+        public void handleStatement(StatementContainer statementContainer) {
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof ConditionalExpression)) return false;
+            ConditionalExpression ce = (ConditionalExpression)obj;
+            if (this.matchedValue != null) {
+                return this.matchedValue.equals(ce);
+            }
+            this.rewriteExpression(ce, null, null, null);
+            if (foundAssignment != null) {
+                this.matchedValue = ce;
+                return true;
+            }
+            return false;
+        }
+
+        public LValue getAssignedLValue() {
+            return lhs;
         }
     }
 

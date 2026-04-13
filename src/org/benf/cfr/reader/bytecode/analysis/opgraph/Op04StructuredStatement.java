@@ -113,6 +113,10 @@ public class Op04StructuredStatement implements MutableGraph<Op04StructuredState
         }
     }
 
+    public static void liftInstanceMatch(Op04StructuredStatement block, Options options, ClassFileVersion classFileVersion, BytecodeMeta bytecodeMeta) {
+        new InstanceOfMatchCheckTransformer().transform(block);
+    }
+
     // TODO: This isn't quite right.  Should actually be removing the node.
     public Op04StructuredStatement nopThisAndReplace() {
         Op04StructuredStatement replacement = new Op04StructuredStatement(instrIndex, blockMembership, structuredStatement);

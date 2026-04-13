@@ -902,6 +902,10 @@ public class CodeAnalyser {
             // We therefore need a SEPARATE pass, post lambda, to ensure that local classes are
             // correctly processed.
             Op04StructuredStatement.discoverVariableScopes(method, block, variableFactory, options, classFileVersion, bytecodeMeta);
+            // Prior to j18, instance of destructuring was .... pretty ugly.
+            // It got cleaned up a lot, but the patterns are quite different.  See if we can lift j18 definition
+            Op04StructuredStatement.liftInstanceMatch(block, options, classFileVersion, bytecodeMeta);
+
             if (bytecodeMeta.has(BytecodeMeta.CodeInfoFlag.INSTANCE_OF_MATCHES)) {
                 Op04StructuredStatement.tidyInstanceMatches(block);
             }
