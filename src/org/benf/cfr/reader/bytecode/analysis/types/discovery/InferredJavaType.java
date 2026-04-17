@@ -149,7 +149,22 @@ public class InferredJavaType {
                     continue;
                 }
                 Map<? extends JavaTypeInstance, JavaGenericRefTypeInstance> boundSupers = otherSupers.getBoundSuperClasses();
-                matches.keySet().retainAll(boundSupers.keySet());
+
+                Iterator<Map.Entry<JavaTypeInstance, JavaGenericRefTypeInstance>> matchesIter = matches.entrySet().iterator();
+                while (matchesIter.hasNext()) {
+                    Map.Entry<JavaTypeInstance, JavaGenericRefTypeInstance> entry = matchesIter.next();
+                    if (!boundSupers.containsKey(entry.getKey())) {
+                        matchesIter.remove();
+                    } else {
+                        JavaGenericRefTypeInstance matchGeneric = entry.getValue();
+                        JavaGenericRefTypeInstance otherGeneric = boundSupers.get(entry.getKey());
+
+                        if (!MiscUtils.objectsEquals(matchGeneric, otherGeneric)) {
+                            // TODO: Try to determine common generic supertype?
+                            matchesIter.remove();
+                        }
+                    }
+                }
             }
             return matches;
         }

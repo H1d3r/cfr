@@ -264,7 +264,7 @@ public class AttributeModule extends Attribute {
 
     @Override
     public long getRawByteLength() {
-        return OFFSET_OF_MODULE_FLAGS + length;
+        return OFFSET_OF_MODULE_NAME + length;
     }
 
     @Override

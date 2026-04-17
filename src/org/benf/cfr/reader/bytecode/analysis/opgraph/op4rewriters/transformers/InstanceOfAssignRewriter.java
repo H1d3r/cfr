@@ -1,21 +1,11 @@
 package org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers;
 
 import org.benf.cfr.reader.bytecode.analysis.loc.BytecodeLoc;
+import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.ExpressionReplacingRewriter;
 import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.AssignmentExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.BoolOp;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanOperation;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.CastExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.CompOp;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.ComparisonOperation;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.ConditionalExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressionDefining;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.LValueExpression;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.NotOperation;
+import org.benf.cfr.reader.bytecode.analysis.parse.expression.*;
 import org.benf.cfr.reader.bytecode.analysis.parse.rewriters.AbstractExpressionRewriter;
 import org.benf.cfr.reader.bytecode.analysis.parse.rewriters.ExpressionRewriterFlags;
 import org.benf.cfr.reader.bytecode.analysis.parse.utils.SSAIdentifiers;
@@ -35,6 +25,7 @@ public class InstanceOfAssignRewriter {
     private final WildcardMatch.LValueWildcard objWildcard;
     private final WildcardMatch.LValueWildcard tmpWildcard;
     private final List<ConditionTest> tests;
+    private final WildcardMatch.DeepAssignment deepAssign;
 
     public static boolean hasInstanceOf(ConditionalExpression conditionalExpression) {
         InstanceOfSearch search = new InstanceOfSearch();
@@ -63,8 +54,9 @@ public class InstanceOfAssignRewriter {
     }
 
     private enum MatchType {
-        SIMPLE,
-        ASSIGN_SIMPLE
+        SIMPLE_J14,
+        ASSIGN_SIMPLE_J14,
+        SIMPLE_J16
     }
 
     private static class ConditionTest {
@@ -96,17 +88,19 @@ public class InstanceOfAssignRewriter {
         // Simple conditional tests.
         // a instanceof Foo && (x = (Foo)a) == a
         // --> a instanceof Foo x
+        BooleanExpression instanceObj = new BooleanExpression(new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, obj, target));
+
         tests = ListFactory.newList();
         ConditionalExpression cPos1 = new BooleanOperation(BytecodeLoc.NONE,
-                new BooleanExpression(new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, obj, target)),
+                instanceObj,
                 new ComparisonOperation(BytecodeLoc.NONE, new AssignmentExpression(BytecodeLoc.NONE, scopedEntity, castObj), castObj, CompOp.EQ),
                 BoolOp.AND
         );
         ConditionalExpression cPos2 = new NotOperation(BytecodeLoc.NONE, cPos1.getDemorganApplied(true));
-        tests.add(new ConditionTest(cPos1, true, MatchType.SIMPLE));
-        tests.add(new ConditionTest(cPos2, true, MatchType.SIMPLE));
-        tests.add(new ConditionTest(cPos1.getNegated(), false, MatchType.SIMPLE));
-        tests.add(new ConditionTest(cPos2.getNegated(), false, MatchType.SIMPLE));
+        tests.add(new ConditionTest(cPos1, true, MatchType.SIMPLE_J14));
+        tests.add(new ConditionTest(cPos2, true, MatchType.SIMPLE_J14));
+        tests.add(new ConditionTest(cPos1.getNegated(), false, MatchType.SIMPLE_J14));
+        tests.add(new ConditionTest(cPos2.getNegated(), false, MatchType.SIMPLE_J14));
 
         // Assignment conditional tests.
         // (a = y) instanceOf Foo && (x = (Foo)a) == a
@@ -121,10 +115,30 @@ public class InstanceOfAssignRewriter {
                 BoolOp.AND
         );
         ConditionalExpression dPos2 = new NotOperation(BytecodeLoc.NONE, cPos1.getDemorganApplied(true));
-        tests.add(new ConditionTest(dPos1, true, MatchType.ASSIGN_SIMPLE));
-        tests.add(new ConditionTest(dPos2, true, MatchType.ASSIGN_SIMPLE));
-        tests.add(new ConditionTest(dPos1.getNegated(), false, MatchType.ASSIGN_SIMPLE));
-        tests.add(new ConditionTest(dPos2.getNegated(), false, MatchType.ASSIGN_SIMPLE));
+        tests.add(new ConditionTest(dPos1, true, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(dPos2, true, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(dPos1.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(dPos2.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
+
+        // Later versions of java make the generated code a lot simpler, which is perversely harder to spot.
+        // obj instanceof Foo && SOMEEXPRESSIONINVOLVING( x = (Foo)obj )
+        // eg:
+        // obj instanceof Foo && ( x = (Foo)obj ).bob()
+        //
+
+        // We want ANY assignment of the obj
+        // if (obj instanceof Foo && (x = obj).bar() )
+        // if (obj instanceof Foo && 1 < (x = obj).bar() )
+        // if (obj instanceof Foo && fn(x = obj) )
+        // if (obj instanceof Foo && f(fn(x = obj) > 2) )
+        // So we need to have the 2nd conditional be a custom search, that ensures x is assigned from obj,
+        // before it is used.
+
+        WildcardMatch.DeepAssignment j16Ce1 = wcm.findDeepAssignment("assignSearch", obj);
+        this.deepAssign = j16Ce1;
+        ConditionalExpression j16Pos1 = new BooleanOperation(BytecodeLoc.NONE, instanceObj, j16Ce1, BoolOp.AND);
+        tests.add(new ConditionTest(j16Pos1, true, MatchType.SIMPLE_J16));
+
     }
 
     private ConditionTest getMatchingTest(ConditionalExpression ce) {
@@ -180,7 +194,7 @@ public class InstanceOfAssignRewriter {
             return ce;
         }
 
-        if (ct.matchType == MatchType.SIMPLE) {
+        if (ct.matchType == MatchType.SIMPLE_J14) {
             LValue obj = objWildcard.getMatch();
 
             ce = new BooleanExpression(new InstanceOfExpressionDefining(BytecodeLoc.TODO,
@@ -189,7 +203,7 @@ public class InstanceOfAssignRewriter {
                     scopedEntity.getInferredJavaType().getJavaTypeInstance(),
                     scopedEntity
             ));
-        } else {
+        } else if (ct.matchType == MatchType.ASSIGN_SIMPLE_J14) {
             LValue obj = objWildcard.getMatch();
             LValue tmp = tmpWildcard.getMatch();
 
@@ -199,6 +213,22 @@ public class InstanceOfAssignRewriter {
                     scopedEntity.getInferredJavaType().getJavaTypeInstance(),
                     scopedEntity
             ));
+        } else if (ct.matchType == MatchType.SIMPLE_J16) {
+            LValue obj = objWildcard.getMatch();
+            // Need to keep both sides of existing ce, and MUTATE.
+
+            AssignmentExpression originalAssign = this.deepAssign.getFoundAssignment();
+
+            BooleanOperation bo = (BooleanOperation)ce;
+
+            ConditionalExpression newLhs = new BooleanExpression(new InstanceOfExpressionDefining(BytecodeLoc.TODO,
+                    new InferredJavaType(RawJavaType.BOOLEAN, InferredJavaType.Source.EXPRESSION),
+                    new LValueExpression(obj),
+                    scopedEntity.getInferredJavaType().getJavaTypeInstance(),
+                    scopedEntity
+            ));
+            ConditionalExpression newRhs = new ExpressionReplacingRewriter(originalAssign, new LValueExpression(scopedEntity)).rewriteExpression(bo.getRhs(), null, null, null);
+            ce = new BooleanOperation(BytecodeLoc.NONE, newLhs, newRhs, bo.getOp());
         }
         if (!ct.isPositive) {
             ce = ce.getNegated();

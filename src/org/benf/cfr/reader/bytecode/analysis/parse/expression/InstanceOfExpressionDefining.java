@@ -23,6 +23,7 @@ import org.benf.cfr.reader.util.output.Dumper;
 
 public class InstanceOfExpressionDefining extends AbstractExpression {
     private Expression lhs;
+    // TODO : Replace with pattern.
     private JavaTypeInstance typeInstance;
     private LValue defines;
 

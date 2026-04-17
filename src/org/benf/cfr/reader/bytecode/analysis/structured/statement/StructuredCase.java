@@ -57,11 +57,11 @@ public class StructuredCase extends AbstractStructuredBlockStatement {
         return handlesNull;
     }
 
-    public void markHandlesNull() {
+    public void markHandlesNull(boolean b) {
         if (!isDefault()) {
             throw new ConfusedCFRException("Should only occur for default case");
         }
-        handlesNull = true;
+        handlesNull = b;
     }
 
     @Override

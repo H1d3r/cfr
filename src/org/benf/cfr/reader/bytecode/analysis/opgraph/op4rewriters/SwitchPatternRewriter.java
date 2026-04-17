@@ -5,7 +5,6 @@ import org.benf.cfr.reader.bytecode.analysis.loc.BytecodeLoc;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.Op04StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.LocalUsageCheck;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.StructuredStatementTransformer;
-import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.util.MiscStatementTools;
 import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.Pattern;
@@ -13,7 +12,6 @@ import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.*;
 import org.benf.cfr.reader.bytecode.analysis.parse.literal.TypedLiteral;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
-import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StackSSALabel;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.StaticVariable;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.RecordPattern;
 import org.benf.cfr.reader.bytecode.analysis.parse.pattern.TypePattern;
@@ -36,23 +34,28 @@ import org.benf.cfr.reader.entities.ClassFileField;
 import org.benf.cfr.reader.state.DCCommonState;
 import org.benf.cfr.reader.util.ClassFileVersion;
 import org.benf.cfr.reader.util.ConfusedCFRException;
+import org.benf.cfr.reader.util.MiscConstants;
 import org.benf.cfr.reader.util.collections.Functional;
 import org.benf.cfr.reader.util.collections.ListFactory;
 import org.benf.cfr.reader.util.collections.MapFactory;
+import org.benf.cfr.reader.util.collections.SetFactory;
 import org.benf.cfr.reader.util.functors.Predicate;
 import org.benf.cfr.reader.util.functors.UnaryFunction;
 import org.benf.cfr.reader.util.getopt.Options;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-public class SwitchPatternRewriter  implements Op04Rewriter {
+public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatementTransformer {
     private final Options options;
     private final ClassFileVersion classFileVersion;
     private final BytecodeMeta bytecodeMeta;
     private final DCCommonState dcCommonState;
     private static Literal typeSwitchLabel = new Literal(TypedLiteral.getString("\"typeSwitch\""));
     private static Literal enumSwitchLabel = new Literal(TypedLiteral.getString("\"enumSwitch\""));
+    private final Map<Op04StructuredStatement, StructuredStatement> controlLoopReplaces = MapFactory.newMap();
 
     public SwitchPatternRewriter(Options options, ClassFileVersion classFileVersion, BytecodeMeta bytecodeMeta, DCCommonState dcCommonState) {
         this.options = options;
@@ -98,11 +101,14 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
     static class CaseCollection {
         final Map<Integer, StructuredCase> cases;
         StructuredCase defalt;
+        // There can't be a nul branch AND A default handles null.
+        StructuredCase nullHandlingDefalt;
         StructuredCase nul;
 
-        CaseCollection(Map<Integer, StructuredCase> cases, StructuredCase defalt, StructuredCase nul) {
+        CaseCollection(Map<Integer, StructuredCase> cases, StructuredCase defalt, StructuredCase nullHandlingDefalt, StructuredCase nul) {
             this.cases = cases;
             this.defalt = defalt;
+            this.nullHandlingDefalt = nullHandlingDefalt;
             this.nul = nul;
         }
     }
@@ -123,34 +129,61 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         return true;
     }
 
-    void processOneSwatch(StructuredStatement switchStatement) {
+    StructuredStatement processOneSwatch(StructuredStatement switchStatement) {
+        SwitchContent switchContent = getSwitchStatement(switchStatement);
+        if (switchContent == null) return null;
+
+        if (switchContent.name.equals(typeSwitchLabel)) {
+            return typeSwitch(switchContent.swatch, switchContent.args, switchContent.swatch, switchContent.argList, switchContent.actualSwitchValue, switchContent.originalSwitchValue);
+        } else if (switchContent.name.equals(enumSwitchLabel)) {
+            return enumSwitch(switchContent.swatch, switchContent.args, switchContent.swatch, switchContent.argList, switchContent.actualSwitchValue, switchContent.originalSwitchValue);
+        }
+        return null;
+    }
+
+    private static SwitchContent getSwitchStatement(StructuredStatement switchStatement) {
+        if (!(switchStatement instanceof StructuredSwitch)) return null;
         StructuredSwitch swatch = (StructuredSwitch) switchStatement;
         Expression on = swatch.getSwitchOn();
-        if (!(on instanceof StaticFunctionInvokation)) return;
+        if (!(on instanceof StaticFunctionInvokation)) return null;
         StaticFunctionInvokation son = (StaticFunctionInvokation)on;
-        if (!son.getClazz().getRawName().equals(TypeConstants.switchBootstrapsName)) return;
+        if (!son.getClazz().getRawName().equals(TypeConstants.switchBootstrapsName)) return null;
         List<Expression> args = son.getArgs();
         // Switchbootstraps arg 1 is types/values, arg 2 is switch values, arg 3 is "search from this index".
-        if (args.size() != 4) return;
+        if (args.size() != 4) return null;
         Expression name = args.get(0);
 
         Expression objects = args.get(1);
-        if (!(objects instanceof NewAnonymousArray)) return;
+        if (!(objects instanceof NewAnonymousArray)) return null;
         Expression originalSwitchValue = args.get(2);
         // use CastExpression.tryRemoveCast
         Expression actualSwitchValue = originalSwitchValue instanceof CastExpression ? ((CastExpression) originalSwitchValue).getChild() : originalSwitchValue;
         NewAnonymousArray aargs = (NewAnonymousArray) objects;
-        if (aargs.getNumDims() != 1) return;
+        if (aargs.getNumDims() != 1) return null;
         List<Expression> argList = aargs.getValues();
+        SwitchContent switchContent = new SwitchContent(swatch, args, name, originalSwitchValue, actualSwitchValue, argList);
+        return switchContent;
+    }
 
-        if (name.equals(typeSwitchLabel)) {
-            typeSwitch(switchStatement, args, swatch, argList, actualSwitchValue, originalSwitchValue);
-        } else if (name.equals(enumSwitchLabel)) {
-            enumSwitch(switchStatement, args, swatch, argList, actualSwitchValue, originalSwitchValue);
+    private static class SwitchContent {
+        public final StructuredSwitch swatch;
+        public final List<Expression> args;
+        public final Expression name;
+        public final Expression originalSwitchValue;
+        public final Expression actualSwitchValue;
+        public final List<Expression> argList;
+
+        public SwitchContent(StructuredSwitch swatch, List<Expression> args, Expression name, Expression originalSwitchValue, Expression actualSwitchValue, List<Expression> argList) {
+            this.swatch = swatch;
+            this.args = args;
+            this.name = name;
+            this.originalSwitchValue = originalSwitchValue;
+            this.actualSwitchValue = actualSwitchValue;
+            this.argList = argList;
         }
     }
 
-    private void enumSwitch(StructuredStatement switchStatement, List<Expression> args, StructuredSwitch swatch, List<Expression> argList, Expression actualSwitchValue, Expression originalSwitchValue) {
+    private StructuredStatement enumSwitch(StructuredSwitch switchStatement, List<Expression> args, StructuredSwitch swatch, List<Expression> argList, Expression actualSwitchValue, Expression originalSwitchValue) {
         // Construct static variable references from the string names in the bootstrap args.
         // We could look these up via the enum class, but the string-based approach works even
         // when the enum class can't be loaded.
@@ -169,7 +202,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             }
         }
 
-        typeSwitch(switchStatement, args, swatch, argList, actualSwitchValue, originalSwitchValue);
+        return typeSwitch(switchStatement, args, swatch, argList, actualSwitchValue, originalSwitchValue);
     }
 
     // We are a multiple Foo _, Bar _, Bap _.
@@ -572,7 +605,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         Note - for record destructuring in place, this becomes significantly more complex.
 
      */
-    private void typeSwitch(StructuredStatement switchStatement, List<Expression> args, StructuredSwitch swatch, List<Expression> argList, Expression actualSwitchValue, Expression originalSwitchValue) {
+    private StructuredStatement typeSwitch(StructuredSwitch switchStatement, List<Expression> args, StructuredSwitch swatch, List<Expression> argList, Expression actualSwitchValue, Expression originalSwitchValue) {
         Expression originalSearchControlValue = args.get(3);
         // use CastExpression.tryRemoveCast
         originalSearchControlValue = originalSearchControlValue instanceof CastExpression ? ((CastExpression) originalSearchControlValue).getChild() : originalSearchControlValue;
@@ -580,7 +613,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
 
         // Collect the case branches from the switch.
         CaseCollection cc = collectSwitchCases(swatch, argList);
-        if (cc == null) return;
+        if (cc == null) return null;
 
         // For each case, gather the definition/destructure/guard info.
         Map<StructuredCase, Gathered> rev = MapFactory.newLazyMap(new UnaryFunction<StructuredCase, Gathered>() {
@@ -600,10 +633,10 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         List<StructuredContinue> controlSources = ListFactory.newList();
         for (Map.Entry<StructuredCase, Gathered> kv : rev.entrySet()) {
             if (!extractTypeswitchCaseBody(kv.getKey(), kv.getValue(), actualSwitchValue, actualSearchControlValue, controlSources)) {
-                return;
+                return null;
             };
             if (kv.getValue().type == GatheredType.None) {
-                return;
+                return null;
             }
         }
 
@@ -616,22 +649,147 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // Apply the gathered results - rebuild case values.
-        applyGatheredResults(rev, cc.nul);
+        applyGatheredResults(rev, cc);
 
         // Rebuild the switch statement.
-        Op04StructuredStatement resultContainer = switchStatement.getContainer();
         BlockIdentifier resultBlock = swatch.getBlockIdentifier();
+        // We're 100% certain this was a switch we can replace - if there was a control loop, we
+        // can remove the identifier IF it's not used elsewhere.  Since that's just removing a (hopefully)
+        // unused variable (i.e. not semantically relevant to this switch statement transformation) let's
+        // leave that for a later pass. (however, release enough references to ensure the loop is removed)
         if (controlLoopContainer != null) {
-            resultContainer = controlLoopContainer;
             resultBlock = controlBlock;
             controlBlock.releaseForeignRefs(controlRefCnt);
         }
 
-        resultContainer.replaceStatement(new StructuredSwitch(
+        // Now we've released foreign refs, we should be able to walk linearly backwards from the switch
+        // and collect a few facts.
+        originalSwitchValue = detectPreSwitchSugar(switchStatement.getContainer(), originalSwitchValue, cc);
+
+        StructuredSwitch res = new StructuredSwitch(
                 BytecodeLoc.TODO,
                 originalSwitchValue,
                 swatch.getBody(),
-                resultBlock, false));
+                resultBlock, false);
+
+        if (controlLoopContainer != null) {
+            this.controlLoopReplaces.put(controlLoopContainer, res);
+        }
+
+        return res;
+    }
+
+    //
+    // We often end up with code like
+    /*
+            Object object = o;
+            Objects.requireNonNull(object);
+            Object object2 = object;
+            int n = 0;
+            switch ((Object)object2) {
+     */
+
+    private LValue followChain(Map<LValue, LValue> lvs, LValue start) {
+        LValue current = start;
+        Set<LValue> tested = SetFactory.newSet();
+        while (true) {
+            if (!tested.add(current)) return current;
+            if (!lvs.containsKey(current)) return current;
+            current = lvs.get(current);
+        }
+    }
+
+    // Here, object and object2 are effectively pointless aliases, (we won't remove, just note this).
+    // The non-null can be removed if we have a null handling default in the switch, by removing null handling.
+    private Expression detectPreSwitchSugar(Op04StructuredStatement container, Expression originalSwitchValue, CaseCollection cc) {
+        Op04StructuredStatement current = container;
+
+        originalSwitchValue = CastExpression.tryRemoveCast(originalSwitchValue);
+        if (!(originalSwitchValue instanceof LValueExpression)) {
+            return originalSwitchValue;
+        }
+        LValue ose = ((LValueExpression) originalSwitchValue).getLValue();
+
+        LValue checkedNotNull = null;
+        Op04StructuredStatement checkContainer = null;
+        Map<LValue, LValue> definedBy = MapFactory.newMap();
+        while (current.getSources().size() == 1) {
+            Op04StructuredStatement pre = current.getSources().get(0);
+            if (pre.getTargets().size() != 1) break;
+            if (pre.getTargets().get(0) != current) break;
+            if (current == container) {
+                current = pre;
+                continue;
+            }
+            // If this is a comment, simply skip over
+            StructuredStatement st = current.getStatement();
+            if (st instanceof StructuredComment) {
+                // ignore.
+                current = pre;
+                continue;
+            }
+            // A simple assignment lv <- lv
+            if (st instanceof StructuredAssignment) {
+                // We could check for creator too, but since we're not REMOVING these, just checking if we can bypass
+                // it is uneccessarily restrictive.
+                LValue lv = ((StructuredAssignment) st).getLvalue();
+                Expression rve = ((StructuredAssignment) st).getRvalue();
+                if (rve instanceof Literal) {
+                    // Allow this - it's likely the loop recovery variable.
+                } else if (rve instanceof LValueExpression) {
+                    LValue rv = ((LValueExpression) rve).getLValue();
+                    if (definedBy.containsKey(lv)) break;
+                    if (definedBy.containsKey(rv)) break;
+                    if (lv.equals(rv)) break;
+                    definedBy.put(lv, rv);
+                } else {
+                    break;
+                }
+
+                current = pre;
+                continue;
+            }
+            // or the ONE requireNonNull.
+            if (st instanceof StructuredExpressionStatement) {
+                if (checkedNotNull != null) break;
+                Expression e = ((StructuredExpressionStatement) st).getExpression();
+                if (!(e instanceof StaticFunctionInvokation)) break;
+                StaticFunctionInvokation sf = (StaticFunctionInvokation)e;
+                if (!sf.getClazz().equals(TypeConstants.OBJECTS)) break;
+                if (!(sf.getMethodPrototype().getName().equals(MiscConstants.REQUIRE_NON_NULL) && sf.getArgs().size() == 1))
+                    break;
+                Expression ea = sf.getArgs().get(0);
+                if (!(ea instanceof LValueExpression)) break;
+                checkedNotNull = ((LValueExpression) ea).getLValue();
+                checkContainer = current;
+                current = pre;
+                continue;
+
+            }
+            break;
+        }
+
+        LValue earliest = followChain(definedBy, ose);
+
+        if (checkedNotNull != null) {
+            if (cc.nullHandlingDefalt != null && cc.nullHandlingDefalt.handlesNull()) {
+                LValue earliestChecked = followChain(definedBy, checkedNotNull);
+                if (earliestChecked.equals(earliest)) {
+                    // We can nop out the checknotnull, and cancel the null handler.
+                    checkContainer.nopOut();
+                    cc.nullHandlingDefalt.markHandlesNull(false);
+                }
+            }
+        }
+
+        if (!earliest.equals(ose)) {
+            Map<LValue, LValue> replace = MapFactory.newMap();
+            replace.put(ose, earliest);
+
+            originalSwitchValue = originalSwitchValue.applyExpressionRewriter(new LValueReplacingRewriter(replace), null, container, null);
+        }
+
+        return originalSwitchValue;
     }
 
     // Parse the switch branches into a map of index->case, plus default and null cases.
@@ -642,7 +800,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         Block block = (Block) body;
         List<Op04StructuredStatement> branches = block.getBlockStatements();
 
-        Map<Integer, StructuredCase> cases = MapFactory.newMap();
+        Map<Integer, StructuredCase> cases = MapFactory.newOrderedMap();
         StructuredCase defalt = null;
         StructuredCase nul = null;
         for (Op04StructuredStatement branch : branches) {
@@ -667,10 +825,9 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // If no branch for 'case null' exists, add one because `SwitchBootstraps` allows null values;
-        // otherwise the dumped code would erroneously fail with a NullPointerException
-        if (nul == null && defalt != null) {
-            defalt.markHandlesNull();
-        }
+        // otherwise the dumped code would erroneously fail with a NullPointerException.
+        // Note - below we clear defalt.
+        StructuredCase nullHandlingDefault = (nul == null && defalt != null) ? defalt : null;
 
         // If there's a size mismatch, pad it out with 'default' for the missing branch.
         // BUT - a default can legitimately exist.
@@ -686,7 +843,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
                 }
             }
         }
-        return new CaseCollection(cases, defalt, nul);
+        return new CaseCollection(cases, defalt, nullHandlingDefault, nul);
     }
 
     // Find the single block that all control continues target, or null if they disagree.
@@ -727,7 +884,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
 
     // Apply the gathered analysis to each case: flatten conditionals, nop out consumed
     // statements, and replace integer case labels with pattern/type expressions.
-    private void applyGatheredResults(Map<StructuredCase, Gathered> rev, StructuredCase nul) {
+    private void applyGatheredResults(Map<StructuredCase, Gathered> rev, CaseCollection cc) {
         for (Gathered g : rev.values()) {
             StructuredCase cas = g.cas;
             // The body of this conditional needs to be lifted into its parent.
@@ -771,9 +928,13 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
         }
 
         // if defalt is still set, it's a legit default.
-        if (nul != null) {
-            nul.getValues().clear();
-            nul.getValues().add(new Literal(TypedLiteral.getNull()));
+        if (cc.nul != null) {
+            cc.nul.getValues().clear();
+            cc.nul.getValues().add(new Literal(TypedLiteral.getNull()));
+        } else if (cc.nullHandlingDefalt != null) {
+            if (cc.nullHandlingDefalt.isDefault()) {
+                cc.nullHandlingDefalt.markHandlesNull(true);
+            }
         }
     }
 
@@ -835,6 +996,7 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             // TODO: Common code ClassFileDumperRecord
         } catch (ConfusedCFRException ce) {
             // Ok - if we can't load it, can we guess? Should we?
+            // TODO : Return a placeholder which makes it obvious.
             return null;
         }
         List<ClassFileField> fields = Functional.filter(c.getFields(), new Predicate<ClassFileField>() {
@@ -844,9 +1006,6 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             }
         });
         Map<MemberFunctionInvokation, LValue> assign = g.recordKeys;
-        if (assign.size() != fields.size()) {
-            return null;
-        }
         Map<String, LValue> keyByName = MapFactory.newMap();
         for (Map.Entry<MemberFunctionInvokation, LValue> entry : assign.entrySet()) {
             keyByName.put(entry.getKey().getName(), entry.getValue());
@@ -856,9 +1015,11 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
             String name = field.getFieldName();
             LValue lv = keyByName.get(name);
             if (lv == null) {
-                return null;
+                InferredJavaType ijtField = new InferredJavaType(field.getField().getJavaTypeInstance(), InferredJavaType.Source.UNKNOWN);
+                lvs.add(new RecordPattern.RecordPatternPlaceholder(ijtField));
+            } else {
+                lvs.add(lv);
             }
-            lvs.add(lv);
         }
         return new RecordPattern(g.definitionLvalue, lvs);
     }
@@ -939,23 +1100,119 @@ public class SwitchPatternRewriter  implements Op04Rewriter {
 
     @Override
     public void rewrite(Op04StructuredStatement root) {
-        List<StructuredStatement> structuredStatements = MiscStatementTools.linearise(root);
-        if (structuredStatements == null) return;
+        root.transform(this, new StructuredScope());
+    }
 
-        List<StructuredStatement> switchStatements = Functional.filter(structuredStatements, new Predicate<StructuredStatement>() {
-            @Override
-            public boolean test(StructuredStatement in) {
-                return in.getClass() == StructuredSwitch.class;
-            }
-        });
-
-        if (switchStatements.isEmpty()) return;
+    @Override
+    public StructuredStatement transform(StructuredStatement in, StructuredScope scope) {
 
         /*
-         * Because the bodies of the case statements themselves are arbitrary, we can't use linearised matching here - need to improve that!
-         */
-        for (StructuredStatement switchStatement : switchStatements) {
-            processOneSwatch(switchStatement);
+         * We need to transform inside-out, because it simplifies the logic of combining nested pattern matching
+         * However, *before* we transform, if
+         * - we are switching as the first statement in a loop (and only if it's a type/enum switch)
+         * - AND the last case in the loop falls through,
+         * - AND the fall through has no other sources
+         *
+         * then we're likely to have a case like
+         *
+         * block12: while (true) {
+            switch (SwitchBootstraps.typeSwitch("typeSwitch", new Object[]{Wrapper.class}, (Object)((Object)wrapper2), (int)n)) {
+                default: {
+                    throw new MatchException(null, null);
+                }
+                case 0:
+            }
+            Wrapper wrapper3 = wrapper2;
+            Shape shape = wrapper3.shape();
+            int n2 = 0;
+            switch (shape) {
+                case Circle(double r): {
+                    string = "Circle with radius " + r;
+                    break block12;
+                }
+                case Rectangle(double w, double h): {
+                    string = "Rectangle " + w + "x" + h;
+                    break block12;
+                }
+                case null, default: {
+                    n = 1;
+                    continue block12;
+                }
+            }
+            break;
         }
+        *
+        * where we've incorrectly ended the switch.  In that case, pull the switch content up into the last branch.
+         */
+        if (in instanceof StructuredWhile) {
+            Op04StructuredStatement body = ((StructuredWhile) in).getBody();
+            StructuredStatement bodyStm = body.getStatement();
+            if (bodyStm instanceof Block) {
+                List<Op04StructuredStatement> content = ((Block) bodyStm).getBlockStatements();
+                if (content.size() >= 2) {
+                    Op04StructuredStatement maybeSwitch = content.get(0);
+                    SwitchContent topSwitch = getSwitchStatement(maybeSwitch.getStatement());
+                    if (topSwitch != null) {
+                        StructuredStatement stm = topSwitch.swatch.getBody().getStatement();
+                        if (stm instanceof Block) {
+                            List<Op04StructuredStatement> blockContent = ((Block) stm).getBlockStatements();
+                            List<Op04StructuredStatement> caseStatements = Functional.filter(blockContent, new Predicate<Op04StructuredStatement>() {
+                                @Override
+                                public boolean test(Op04StructuredStatement in) {
+                                    return in.getStatement().getClass() == StructuredCase.class;
+                                }
+                            });
+                            Op04StructuredStatement lastCase = caseStatements.get(caseStatements.size() - 1);
+                            Op04StructuredStatement maybeNext = content.get(1);
+                            if (lastCase.getTargets().size() == 1 && lastCase.getTargets().get(0) == maybeNext &&
+                                    maybeNext.getSources().size() == 1 && maybeNext.getSources().get(0) == lastCase) {
+                                int last = blockContent.indexOf(lastCase);
+                                if (last == blockContent.size() - 1) {
+                                    StructuredStatement tgtContent = ((StructuredCase)lastCase.getStatement()).getBody().getStatement();
+                                    if (tgtContent instanceof Block) {
+                                        Block tgtContentBlock = (Block)tgtContent;
+                                        tgtContentBlock.setIndenting(true);
+                                        List<Op04StructuredStatement> tgtContentBlockStm = tgtContentBlock.getBlockStatements();
+                                        tgtContentBlockStm.addAll(tgtContentBlockStm.size(), content.subList(1, content.size()));
+                                        while (content.size() > 1) {
+                                            content.remove(content.size() - 1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        in.transformStructuredChildren(this, scope);
+        // Check for statement replace.
+        if (controlLoopReplaces.containsKey(in.getContainer())) {
+            return controlLoopReplaces.get(in.getContainer());
+        }
+
+        if (!(in instanceof StructuredSwitch)) {
+            return in;
+        }
+
+        StructuredStatement res = processOneSwatch(in);
+        if (res == null) {
+            return in;
+        }
+
+        /*
+         * Post transform refactoring - if we have a further switch inside us, we want to lift their branches.
+         */
+        StructuredStatement res2 = postProcessOneSwatch(res);
+        if (res2 != null) {
+            res = res2;
+        }
+
+        return res;
+    }
+
+    private StructuredStatement postProcessOneSwatch(StructuredStatement res) {
+        return null;
     }
 }
