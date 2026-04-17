@@ -38,21 +38,18 @@ jobs:
     - name: Upload main jar to artifact
       uses: actions/upload-artifact@v7
       with:
-        name: CFR Main JAR
         path: target/*[^-sources][^-javadoc].jar
         archive: false
 
     - name: Upload sources jar to artifact
       uses: actions/upload-artifact@v7
       with:
-        name: CFR Sources JAR
         path: target/*-sources.jar
         archive: false
 
     - name: Upload javadoc jar to artifact
       uses: actions/upload-artifact@v7
       with:
-         name: CFR JavaDoc JAR
          path: target/*-javadoc.jar
          archive: false
 
