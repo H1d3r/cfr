@@ -2,6 +2,7 @@ package org.benf.cfr.reader.bytecode.analysis.opgraph.op3rewriters;
 
 import org.benf.cfr.reader.bytecode.analysis.loc.BytecodeLoc;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.Op03SimpleStatement;
+import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.Statement;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.*;
@@ -451,4 +452,117 @@ public class CondenseConditionals {
 
     }
 
+    /*
+     * j18+ instanceof pattern matching compiles as:
+     *
+     *   if (!(o instanceof T)) goto ELSE
+     *   T b = (T)o;
+     *   if (!cond) goto ELSE
+     *
+     * Absorb the cast+assign into the first condition (without reordering):
+     *
+     *   if (!(o instanceof T && null != (b = (T)o))) goto ELSE
+     *   if (!cond) goto ELSE
+     *
+     * Now the two ifs are adjacent and condenseConditionals can merge them.
+     */
+    public static boolean condenseInstanceOfAssign(List<Op03SimpleStatement> statements) {
+        boolean effect = false;
+        for (int x = 0; x < statements.size(); ++x) {
+            Op03SimpleStatement s0 = statements.get(x);
+            Statement s0inner = s0.getStatement();
+            if (!(s0inner instanceof IfStatement)) continue;
+
+            IfStatement if0 = (IfStatement) s0inner;
+            InstanceOfExpression instanceOf = getOnlyInstanceOf(if0.getCondition());
+            if (instanceOf == null) continue;
+
+            Op03SimpleStatement s1 = s0.getTargets().get(0); // fallthrough
+            Op03SimpleStatement s0taken = s0.getTargets().get(1); // taken (ELSE)
+
+            Statement s1inner = s1.getStatement();
+            if (!(s1inner instanceof AssignmentSimple)) continue;
+            if (s1.getSources().size() != 1) continue;
+            if (s1.getTargets().size() != 1) continue;
+
+            AssignmentSimple assign = (AssignmentSimple) s1inner;
+            Expression rvalue = assign.getRValue();
+            if (!(rvalue instanceof CastExpression)) continue;
+            CastExpression cast = (CastExpression) rvalue;
+
+            // The cast must be of the same object tested by instanceof, to the same type.
+            if (!instanceOf.getTypeInstance().equals(cast.getInferredJavaType().getJavaTypeInstance())) continue;
+            if (!instanceOf.getLhs().equals(cast.getChild())) continue;
+
+            Op03SimpleStatement s2 = s1.getTargets().get(0);
+            Statement s2inner = s2.getStatement();
+            if (!(s2inner instanceof IfStatement)) continue;
+            if (s2.getSources().size() != 1) continue;
+
+            Op03SimpleStatement s2taken = s2.getTargets().get(1);
+            // Both ifs must jump to the same ELSE target
+            if (s0taken != s2taken) continue;
+
+            // Absorb: create  null != (b = (T)o)  as a ConditionalExpression
+            Expression assignExpr = assign.getInliningExpression();
+            ConditionalExpression nullCheck = new ComparisonOperation(
+                    BytecodeLoc.NONE, Literal.NULL, assignExpr, CompOp.NE);
+
+            // AND it with the original instanceof condition to get:
+            //   instanceof T && null != (b = (T)o)
+            // Then negate (since the if condition is the negated/jump form):
+            //   !(instanceof T && null != (b = (T)o))
+            //
+            // The original condition is already in negated form, e.g.
+            //   !(o instanceof T)  or  (o instanceof T) == false
+            // We need to replace that with the negation of the AND.
+            // Easiest: wrap instanceof in BooleanExpression, AND with nullCheck,
+            // then wrap in NotOperation to get the jump condition.
+            ConditionalExpression instanceOfCond = new BooleanExpression(instanceOf);
+            ConditionalExpression combined = new BooleanOperation(
+                    BytecodeLoc.NONE, instanceOfCond, nullCheck, BoolOp.AND);
+            ConditionalExpression negated = new NotOperation(BytecodeLoc.NONE, combined);
+
+            s0.replaceStatement(new IfStatement(BytecodeLoc.NONE, negated));
+
+            // Remove S1: redirect S0 fallthrough to S2
+            Op03SimpleStatement s2fall = s2.getTargets().get(0);
+            s0.replaceTarget(s1, s2);
+            s2.replaceSource(s1, s0);
+            s1.getSources().clear();
+            s1.getTargets().clear();
+            s1.nopOut();
+
+            effect = true;
+        }
+        return effect;
+    }
+
+    /*
+     * Return the InstanceOfExpression if the condition is SOLELY a negated instanceof,
+     * i.e.  !(o instanceof T)  or  (o instanceof T) == false.
+     * Returns null if the condition is compound or not instanceof-based.
+     */
+    private static InstanceOfExpression getOnlyInstanceOf(ConditionalExpression cond) {
+        if (cond instanceof NotOperation) {
+            return getPositiveInstanceOf(((NotOperation) cond).getNegated());
+        }
+        if (cond instanceof ComparisonOperation) {
+            // (o instanceof T) == false
+            ComparisonOperation comp = (ComparisonOperation) cond;
+            Expression lhs = comp.getLhs();
+            if (lhs instanceof InstanceOfExpression) return (InstanceOfExpression) lhs;
+            Expression rhs = comp.getRhs();
+            if (rhs instanceof InstanceOfExpression) return (InstanceOfExpression) rhs;
+        }
+        return null;
+    }
+
+    private static InstanceOfExpression getPositiveInstanceOf(ConditionalExpression cond) {
+        if (cond instanceof BooleanExpression) {
+            Expression inner = ((BooleanExpression) cond).getInner();
+            if (inner instanceof InstanceOfExpression) return (InstanceOfExpression) inner;
+        }
+        return null;
+    }
 }

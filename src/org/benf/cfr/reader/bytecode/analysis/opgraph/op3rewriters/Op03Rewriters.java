@@ -68,6 +68,10 @@ public class Op03Rewriters {
         return CondenseConditionals.condenseConditionals(op03SimpleParseNodes);
     }
 
+    public static boolean condenseInstanceOfAssign(List<Op03SimpleStatement> op03SimpleParseNodes) {
+        return CondenseConditionals.condenseInstanceOfAssign(op03SimpleParseNodes);
+    }
+
     public static boolean condenseConditionals2(List<Op03SimpleStatement> op03SimpleParseNodes) {
         return CondenseConditionals.condenseConditionals2(op03SimpleParseNodes);
     }

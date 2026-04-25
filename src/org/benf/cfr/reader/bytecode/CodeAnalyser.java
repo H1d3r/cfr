@@ -646,6 +646,11 @@ public class CodeAnalyser {
             //
             reloop = reloop | Op03Rewriters.condenseConditionals2(op03SimpleParseNodes);
             reloop = reloop | Op03Rewriters.normalizeDupAssigns(op03SimpleParseNodes);
+            // j18+ instanceof patterns: absorb cast+assign into the condition
+            // so the two ifs become adjacent for condenseConditionals.
+            if (options.getOption(OptionsImpl.INSTANCEOF_PATTERN, classFileVersion)) {
+                reloop = reloop | Op03Rewriters.condenseInstanceOfAssign(op03SimpleParseNodes);
+            }
             if (reloop) {
                 LValueProp.condenseLValues(op03SimpleParseNodes);
             }
