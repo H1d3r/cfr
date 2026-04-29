@@ -1,8 +1,8 @@
 # CFR - Another Java Decompiler \o/
 
-This is the public repository for the CFR decompiler, main site hosted at <a href="https://www.benf.org/other/cfr">benf.org/other/cfr</a>
+This is the public repository for the CFR decompiler, main site hosted at [benf.org/other/cfr](https://www.benf.org/other/cfr)
 
-CFR will decompile modern Java features - <a href="https://www.benf.org/other/cfr/java9observations.html">including much of Java <a href="java9stringconcat.html">9</a>, <a href="https://www.benf.org/other/cfr/switch_expressions.html">12</a> &amp; <a href="https://www.benf.org/other/cfr/java14instanceof_pattern">14</a>, but is written entirely in Java 6, so will work anywhere!  (<a href="https://www.benf.org/other/cfr/faq.html">FAQ</a>) - It'll even make a decent go of turning class files from other JVM languages back into java!</p>
+CFR will decompile modern Java features - [including much of Java 9](https://www.benf.org/other/cfr/java9observations.html), [12](https://www.benf.org/other/cfr/switch_expressions.html) & [14](https://www.benf.org/other/cfr/java14instanceof_pattern), but is written entirely in Java 6, so will work anywhere!  ([FAQ](https://www.benf.org/other/cfr/faq.html)) - It'll even make a decent go of turning class files from other JVM languages back into java!
 
 To use, simply run the specific version jar, with the class name(s) you want to decompile (either as a path to a class file, or as a fully qualified classname on your classpath).
 (`--help` to list arguments).
@@ -11,11 +11,13 @@ Alternately, to decompile an entire jar, simply provide the jar path, and if you
 
 # Getting CFR
 
-The main site for CFR is <a href="https://www.benf.org/other/cfr">benf.org/other/cfr</a>, where releases are available with a bunch of rambling musings from the author.
+The main site for CFR is [benf.org/other/cfr](https://www.benf.org/other/cfr), where releases are available with a bunch of rambling musings from the author.
 
-Since 0.145, Binaries are published on github along with release tags.
+Since 0.145, Binaries are [published on GitHub along with release tags](https://github.com/leibnitz27/cfr/releases).
 
-You can also download CFR from your favourite <a href="https://mvnrepository.com/artifact/org.benf/cfr">maven</a> repo, though releases are published a few days late usually, to allow for release regret.
+You can also download CFR from [Maven Central](https://central.sonatype.com/artifact/org.benf/cfr), though releases are published a few days late usually, to allow for release regret.
+
+SNAPSHOT versions can be obtained from the [GitHub workflow artifacts](https://github.com/leibnitz27/cfr/actions/workflows/maven.yml?query=branch%3Amaster), see also the [GitHub docs](https://docs.github.com/en/actions/managing-workflow-runs/downloading-workflow-artifacts).
 
 # Issues
 
