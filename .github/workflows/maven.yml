@@ -30,7 +30,32 @@ jobs:
     - name: Upload decompilation test failures artifact
       # Only run when Maven build failed, see https://github.community/t/run-step-only-if-previous-step-failed/127124/3
       if: failure() && steps.maven-build.outcome == 'failure'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: decompilation-test-failures-diff
         path: target/cfr-test-failures-diff
+
+    - name: Upload main jar to artifact
+      uses: actions/upload-artifact@v7
+      with:
+        path: target/cfr-*-SNAPSHOT.jar
+        archive: false
+
+    - name: Upload sources jar to artifact
+      uses: actions/upload-artifact@v7
+      with:
+        path: target/cfr-*-SNAPSHOT-sources.jar
+        archive: false
+
+    - name: Upload javadoc jar to artifact
+      uses: actions/upload-artifact@v7
+      with:
+         path: target/cfr-*-SNAPSHOT-javadoc.jar
+         archive: false
+
+    - name: Upload all jars to artifact
+      uses: actions/upload-artifact@v7
+      with:
+         name: CFR All JARs
+         path: target/*.jar
+         archive: true
