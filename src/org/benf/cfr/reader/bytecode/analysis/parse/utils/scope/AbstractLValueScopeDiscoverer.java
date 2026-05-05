@@ -397,6 +397,8 @@ public abstract class AbstractLValueScopeDiscoverer implements LValueScopeDiscov
             List<StatementContainer<StructuredStatement>> scope = ListFactory.newList(nestedScope);
             if (exactStatement != null && exactStatement.getStatement().alwaysDefines(lValue)) return Pair.make(scope, exactStatement);
             if (scope.isEmpty()) return Pair.make(scope, exactStatement);
+            // Here, we try not to allow anything to be declared too widely.
+            // However, that doesn't stop instance of matches being declared too *late* since j21 changes.
             for (int x=scope.size()-1;x>=0;--x) {
                 StatementContainer<StructuredStatement> scopeTest = scope.get(x);
                 if (scopeTest.getStatement().canDefine(lValue, factCache)) break;
