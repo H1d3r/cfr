@@ -9,6 +9,7 @@ import org.benf.cfr.reader.entityfactories.AttributeFactory;
 import org.benf.cfr.reader.entityfactories.ContiguousEntityFactory;
 import org.benf.cfr.reader.state.TypeUsageCollector;
 import org.benf.cfr.reader.util.ClassFileVersion;
+import org.benf.cfr.reader.util.ConfusedCFRException;
 import org.benf.cfr.reader.util.bytestream.ByteData;
 import org.benf.cfr.reader.util.output.Dumper;
 
@@ -53,7 +54,12 @@ public class AttributeCode extends Attribute {
         } else {
             maxStack = raw.getU2At(OFFSET_OF_MAX_STACK);
             maxLocals = raw.getU2At(OFFSET_OF_MAX_LOCALS);
-            codeLength = raw.getS4At(OFFSET_OF_CODE_LENGTH);
+            long codeLengthL = raw.getU4At(OFFSET_OF_CODE_LENGTH);
+            // JVM spec actually says this value must be < 65536 (despite it being of type u4), see https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.7.3
+            if (codeLengthL > Integer.MAX_VALUE) {
+                throw new ConfusedCFRException("Unsupported code length: " + codeLengthL);
+            }
+            codeLength = (int) codeLengthL;
         }
         this.maxStack = maxStack;
         this.maxLocals = maxLocals;

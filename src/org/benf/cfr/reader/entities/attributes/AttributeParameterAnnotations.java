@@ -19,7 +19,7 @@ public abstract class AttributeParameterAnnotations extends Attribute implements
     private final List<List<AnnotationTableEntry>> annotationTableEntryListList;
 
     public AttributeParameterAnnotations(ByteData raw, ConstantPool cp) {
-        byte numParameters = raw.getS1At(OFFSET_OF_NUMBER_OF_PARAMETERS);
+        short numParameters = raw.getU1At(OFFSET_OF_NUMBER_OF_PARAMETERS);
         long offset = OFFSET_OF_ANNOTATION_NAME_TABLE;
         annotationTableEntryListList = ListFactory.newList();
         for (int x = 0; x < numParameters; ++x) {

@@ -46,15 +46,15 @@ public class AttributeRecord extends Attribute {
 
         componentInfos = ListFactory.newList();
         for (int i = 0; i < numComponents; i++) {
-            int nameIndex = raw.getS2At(offset);
+            int nameIndex = raw.getU2At(offset);
             offset += 2;
             String name = cp.getUTF8Entry(nameIndex).getValue();
 
-            int descriptorIndex = raw.getS2At(offset);
+            int descriptorIndex = raw.getU2At(offset);
             offset += 2;
             String descriptor = cp.getUTF8Entry(descriptorIndex).getValue();
 
-            int attributesCount = raw.getS2At(offset);
+            int attributesCount = raw.getU2At(offset);
             offset += 2;
 
             List<Attribute> attributes = ListFactory.newList(attributesCount);
