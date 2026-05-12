@@ -9,25 +9,19 @@ import java.util.TreeMap;
 public class AttributeLineNumberTable extends Attribute {
     public static final String ATTRIBUTE_NAME = "LineNumberTable";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_ENTRY_COUNT = 6;
-    private static final long OFFSET_OF_ENTRIES = 8;
+    private static final long OFFSET_OF_ENTRY_COUNT = 0;
+    private static final long OFFSET_OF_ENTRIES = 2;
 
-    private final int length;
     private final NavigableMap<Integer, Integer> entries = new TreeMap<Integer, Integer>();
 
 
     public AttributeLineNumberTable(ByteData raw) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numLineNumbers = raw.getU2At(OFFSET_OF_ENTRY_COUNT);
-        if (numLineNumbers * 2 <= length) {
-            long offset = OFFSET_OF_ENTRIES;
-            for (int x = 0; x < numLineNumbers; ++x, offset += 4) {
-                int startPc = raw.getU2At(offset);
-                int lineNumber = raw.getU2At(offset + 2);
-                entries.put( startPc, lineNumber);
-            }
+        long offset = OFFSET_OF_ENTRIES;
+        for (int x = 0; x < numLineNumbers; ++x, offset += 4) {
+            int startPc = raw.getU2At(offset);
+            int lineNumber = raw.getU2At(offset + 2);
+            entries.put( startPc, lineNumber);
         }
     }
 
@@ -47,11 +41,6 @@ public class AttributeLineNumberTable extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return d.print(ATTRIBUTE_NAME);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

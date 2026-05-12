@@ -13,16 +13,12 @@ import java.util.List;
 
 public abstract class AttributeParameterAnnotations extends Attribute implements TypeUsageCollectable {
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_NUMBER_OF_PARAMETERS = 6;
-    private static final long OFFSET_OF_ANNOTATION_NAME_TABLE = 7;
+    private static final long OFFSET_OF_NUMBER_OF_PARAMETERS = 0;
+    private static final long OFFSET_OF_ANNOTATION_NAME_TABLE = 1;
 
     private final List<List<AnnotationTableEntry>> annotationTableEntryListList;
-    private final int length;
 
     public AttributeParameterAnnotations(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         byte numParameters = raw.getS1At(OFFSET_OF_NUMBER_OF_PARAMETERS);
         long offset = OFFSET_OF_ANNOTATION_NAME_TABLE;
         annotationTableEntryListList = ListFactory.newList();
@@ -48,11 +44,6 @@ public abstract class AttributeParameterAnnotations extends Attribute implements
     @Override
     public Dumper dump(Dumper d) {
         return d;
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

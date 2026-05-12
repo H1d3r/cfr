@@ -14,11 +14,10 @@ import java.util.TreeSet;
 public class AttributeModule extends Attribute {
     public static final String ATTRIBUTE_NAME = "Module";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_MODULE_NAME = 6;
-    private static final long OFFSET_OF_MODULE_FLAGS = 8;
-    private static final long OFFSET_OF_MODULE_VERSION = 10;
-    private static final long OFFSET_OF_DYNAMIC_INFO = 12;
+    private static final long OFFSET_OF_MODULE_NAME = 0;
+    private static final long OFFSET_OF_MODULE_FLAGS = 2;
+    private static final long OFFSET_OF_MODULE_VERSION = 4;
+    private static final long OFFSET_OF_DYNAMIC_INFO = 6;
     private final int nameIdx;
     private final int flags;
     private final int versionIdx;
@@ -230,11 +229,9 @@ public class AttributeModule extends Attribute {
 
     // requires, exports, opens, uses and provides are dynamically sized.
 
-    private final int length;
-    private ConstantPool cp;
+    private final ConstantPool cp;
 
     public AttributeModule(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         this.cp = cp;
         this.nameIdx = raw.getU2At(OFFSET_OF_MODULE_NAME);
         this.flags = raw.getU2At(OFFSET_OF_MODULE_FLAGS);
@@ -260,11 +257,6 @@ public class AttributeModule extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return d.print(ATTRIBUTE_NAME);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_MODULE_NAME + length;
     }
 
     @Override

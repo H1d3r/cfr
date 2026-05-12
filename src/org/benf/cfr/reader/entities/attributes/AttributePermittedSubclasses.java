@@ -12,16 +12,12 @@ import java.util.List;
 public class AttributePermittedSubclasses extends Attribute {
     public static final String ATTRIBUTE_NAME = "PermittedSubclasses";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_ENTRY_COUNT = 6;
-    private static final long OFFSET_OF_ENTRIES = 8;
+    private static final long OFFSET_OF_ENTRY_COUNT = 0;
+    private static final long OFFSET_OF_ENTRIES = 2;
 
-    private final int length;
     private final List<JavaTypeInstance> entries;
 
     public AttributePermittedSubclasses(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numEntries = raw.getU2At(OFFSET_OF_ENTRY_COUNT);
         this.entries = ListFactory.newList();
         long offset = OFFSET_OF_ENTRIES;
@@ -45,11 +41,6 @@ public class AttributePermittedSubclasses extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return d.print(ATTRIBUTE_NAME);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

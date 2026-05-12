@@ -17,7 +17,6 @@ import org.benf.cfr.reader.entities.constantpool.ConstantPoolEntryClass;
 import org.benf.cfr.reader.entities.constantpool.ConstantPoolEntryUTF8;
 import org.benf.cfr.reader.entities.constantpool.ConstantPoolUtils;
 import org.benf.cfr.reader.entityfactories.AttributeFactory;
-import org.benf.cfr.reader.entityfactories.ContiguousEntityFactory;
 import org.benf.cfr.reader.state.DCCommonState;
 import org.benf.cfr.reader.state.LocalClassAwareTypeUsageInformation;
 import org.benf.cfr.reader.state.TypeUsageCollector;
@@ -114,10 +113,8 @@ public class Method implements KnowsRawSize, TypeUsageCollectable {
         String initialName = cp.getUTF8Entry(nameIndex).getValue();
 
         int numAttributes = raw.getU2At(OFFSET_OF_ATTRIBUTES_COUNT);
-        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>();
-        tmpAttributes.ensureCapacity(numAttributes);
-        long attributesLength = ContiguousEntityFactory.build(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), numAttributes, tmpAttributes,
-                AttributeFactory.getBuilder(cp, classFileVersion));
+        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>(numAttributes);
+        long attributesLength = AttributeFactory.readAttributes(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), cp, classFileVersion, numAttributes, tmpAttributes);
 
         this.attributes = new AttributeMap(tmpAttributes);
         AccessFlagMethod.applyAttributes(attributes, accessFlags);

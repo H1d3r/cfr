@@ -18,7 +18,6 @@ import org.benf.cfr.reader.entities.constantpool.ConstantPool;
 import org.benf.cfr.reader.entities.constantpool.ConstantPoolEntryUTF8;
 import org.benf.cfr.reader.entities.constantpool.ConstantPoolUtils;
 import org.benf.cfr.reader.entityfactories.AttributeFactory;
-import org.benf.cfr.reader.entityfactories.ContiguousEntityFactory;
 import org.benf.cfr.reader.state.TypeUsageCollector;
 import org.benf.cfr.reader.util.ClassFileVersion;
 import org.benf.cfr.reader.util.DecompilerComments;
@@ -63,10 +62,8 @@ public class Field implements KnowsRawSize, TypeUsageCollectable {
         this.cp = cp;
         this.accessFlags = AccessFlag.build(raw.getU2At(OFFSET_OF_ACCESS_FLAGS));
         int attributes_count = raw.getU2At(OFFSET_OF_ATTRIBUTES_COUNT);
-        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>();
-        tmpAttributes.ensureCapacity(attributes_count);
-        long attributesLength = ContiguousEntityFactory.build(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), attributes_count, tmpAttributes,
-                AttributeFactory.getBuilder(cp, classFileVersion));
+        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>(attributes_count);
+        long attributesLength = AttributeFactory.readAttributes(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), cp, classFileVersion, attributes_count, tmpAttributes);
 
         this.attributes = new AttributeMap(tmpAttributes);
         AccessFlag.applyAttributes(attributes, accessFlags);

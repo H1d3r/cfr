@@ -22,6 +22,11 @@ public abstract class AbstractBackedByteData implements ByteData {
     }
 
     @Override
+    public long getU4At(long offset) {
+        return getS4At(offset) & 0xFFFFFFFFL;
+    }
+
+    @Override
     public double getDoubleAt(long o) throws ConfusedCFRException {
         return Double.longBitsToDouble(getLongAt(o));
     }
