@@ -13,16 +13,9 @@ import java.util.List;
 public class AttributeBootstrapMethods extends Attribute {
     public static final String ATTRIBUTE_NAME = "BootstrapMethods";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-
-    private static final long OFFSET_OF_NUM_METHODS = 6;
-
-    private final int length;
     private final List<BootstrapMethodInfo> methodInfoList;
 
     public AttributeBootstrapMethods(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         this.methodInfoList = decodeMethods(raw, cp);
     }
 
@@ -36,8 +29,8 @@ public class AttributeBootstrapMethods extends Attribute {
     private static List<BootstrapMethodInfo> decodeMethods(ByteData raw, ConstantPool cp) {
 
         List<BootstrapMethodInfo> res = ListFactory.newList();
-        int numMethods = raw.getU2At(OFFSET_OF_NUM_METHODS);
-        long offset = OFFSET_OF_NUM_METHODS + 2;
+        int numMethods = raw.getU2At(0);
+        long offset = 2;
         for (int x = 0; x < numMethods; ++x) {
             int methodRef = raw.getU2At(offset);
             ConstantPoolEntryMethodHandle methodHandle = cp.getMethodHandleEntry(methodRef);
@@ -63,11 +56,6 @@ public class AttributeBootstrapMethods extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return d.print(ATTRIBUTE_NAME);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

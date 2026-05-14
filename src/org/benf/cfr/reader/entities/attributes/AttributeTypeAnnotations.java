@@ -15,17 +15,11 @@ import java.util.Map;
 
 public abstract class AttributeTypeAnnotations extends Attribute {
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_NUMBER_OF_ANNOTATIONS = 6;
-    private static final long OFFSET_OF_ANNOTATION_TABLE = 8;
-    private Map<TypeAnnotationEntryValue, List<AnnotationTableTypeEntry>> annotationTableEntryData = MapFactory.newMap();
-
-    private final int length;
-
+    private static final long OFFSET_OF_NUMBER_OF_ANNOTATIONS = 0;
+    private static final long OFFSET_OF_ANNOTATION_TABLE = 2;
+    private final Map<TypeAnnotationEntryValue, List<AnnotationTableTypeEntry>> annotationTableEntryData = MapFactory.newMap();
 
     AttributeTypeAnnotations(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numAnnotations = raw.getU2At(OFFSET_OF_NUMBER_OF_ANNOTATIONS);
         long offset = OFFSET_OF_ANNOTATION_TABLE;
 
@@ -53,12 +47,6 @@ public abstract class AttributeTypeAnnotations extends Attribute {
             }
         }
         return d;
-    }
-
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

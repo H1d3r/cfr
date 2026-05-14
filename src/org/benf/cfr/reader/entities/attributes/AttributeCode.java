@@ -9,6 +9,7 @@ import org.benf.cfr.reader.entityfactories.AttributeFactory;
 import org.benf.cfr.reader.entityfactories.ContiguousEntityFactory;
 import org.benf.cfr.reader.state.TypeUsageCollector;
 import org.benf.cfr.reader.util.ClassFileVersion;
+import org.benf.cfr.reader.util.ConfusedCFRException;
 import org.benf.cfr.reader.util.bytestream.ByteData;
 import org.benf.cfr.reader.util.output.Dumper;
 
@@ -18,10 +19,8 @@ import java.util.List;
 public class AttributeCode extends Attribute {
     public static final String ATTRIBUTE_NAME = "Code";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_MAX_STACK = 6;
+    private static final long OFFSET_OF_MAX_STACK = 0;
 
-    private final int length;
     @SuppressWarnings({"FieldCanBeLocal", "unused"})
     private final int maxStack;
     private final int maxLocals;
@@ -35,19 +34,18 @@ public class AttributeCode extends Attribute {
 
     public AttributeCode(ByteData raw, final ConstantPool cp, ClassFileVersion classFileVersion) {
         this.cp = cp;
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
 
-        long OFFSET_OF_MAX_LOCALS = 8;
-        long OFFSET_OF_CODE_LENGTH = 10;
-        long OFFSET_OF_CODE = 14;
+        long OFFSET_OF_MAX_LOCALS = 2;
+        long OFFSET_OF_CODE_LENGTH = 4;
+        long OFFSET_OF_CODE = 8;
 
         int maxStack;
         int maxLocals;
         int codeLength;
         if (classFileVersion.before(ClassFileVersion.JAVA_1_0)) {
-            OFFSET_OF_MAX_LOCALS = 7;
-            OFFSET_OF_CODE_LENGTH = 8;
-            OFFSET_OF_CODE = 10;
+            OFFSET_OF_MAX_LOCALS = 1;
+            OFFSET_OF_CODE_LENGTH = 2;
+            OFFSET_OF_CODE = 4;
 
             maxStack = raw.getU1At(OFFSET_OF_MAX_STACK);
             maxLocals = raw.getU1At(OFFSET_OF_MAX_LOCALS);
@@ -56,7 +54,12 @@ public class AttributeCode extends Attribute {
         } else {
             maxStack = raw.getU2At(OFFSET_OF_MAX_STACK);
             maxLocals = raw.getU2At(OFFSET_OF_MAX_LOCALS);
-            codeLength = raw.getS4At(OFFSET_OF_CODE_LENGTH);
+            long codeLengthL = raw.getU4At(OFFSET_OF_CODE_LENGTH);
+            // JVM spec actually says this value must be < 65536 (despite it being of type u4), see https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.7.3
+            if (codeLengthL > Integer.MAX_VALUE) {
+                throw new ConfusedCFRException("Unsupported code length: " + codeLengthL);
+            }
+            codeLength = (int) codeLengthL;
         }
         this.maxStack = maxStack;
         this.maxLocals = maxLocals;
@@ -76,10 +79,7 @@ public class AttributeCode extends Attribute {
         final long OFFSET_OF_ATTRIBUTES_COUNT = OFFSET_OF_EXCEPTION_TABLE + numBytesExceptionInfo;
         final long OFFSET_OF_ATTRIBUTES = OFFSET_OF_ATTRIBUTES_COUNT + 2;
         final int numAttributes = raw.getU2At(OFFSET_OF_ATTRIBUTES_COUNT);
-        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>();
-        tmpAttributes.ensureCapacity(numAttributes);
-        ContiguousEntityFactory.build(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), numAttributes, tmpAttributes,
-                AttributeFactory.getBuilder(cp, classFileVersion));
+        List<Attribute> tmpAttributes = AttributeFactory.readAttributes(raw.getOffsetData(OFFSET_OF_ATTRIBUTES), cp, classFileVersion, numAttributes);
         this.attributes = new AttributeMap(tmpAttributes);
 
         this.rawData = raw.getOffsetData(OFFSET_OF_CODE);
@@ -133,11 +133,6 @@ public class AttributeCode extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return codeAnalyser.getAnalysis(getConstantPool().getDCCommonState()).dump(d);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_MAX_STACK + length;
     }
 
     @Override

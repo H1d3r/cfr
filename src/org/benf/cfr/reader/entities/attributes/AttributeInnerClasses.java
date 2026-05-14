@@ -16,13 +16,9 @@ import java.util.List;
 public class AttributeInnerClasses extends Attribute {
     public static final String ATTRIBUTE_NAME = "InnerClasses";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_NUMBER_OF_CLASSES = 6;
-    private static final long OFFSET_OF_CLASS_ARRAY = 8;
+    private static final long OFFSET_OF_NUMBER_OF_CLASSES = 0;
+    private static final long OFFSET_OF_CLASS_ARRAY = 2;
 
-
-    private final int length;
     private final List<InnerClassAttributeInfo> innerClassAttributeInfoList = ListFactory.newList();
 
     private static JavaTypeInstance getOptClass(int idx, ConstantPool cp) {
@@ -53,7 +49,6 @@ public class AttributeInnerClasses extends Attribute {
     public AttributeInnerClasses(ByteData raw, ConstantPool cp) {
         Boolean forbidMethodScopedClasses = cp.getDCCommonState().getOptions().getOption(OptionsImpl.FORBID_METHOD_SCOPED_CLASSES);
         Boolean forbidAnonymousClasses = cp.getDCCommonState().getOptions().getOption(OptionsImpl.FORBID_ANONYMOUS_CLASSES);
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numberInnerClasses = raw.getU2At(OFFSET_OF_NUMBER_OF_CLASSES);
         long offset = OFFSET_OF_CLASS_ARRAY;
         for (int x = 0; x < numberInnerClasses; ++x) {
@@ -98,11 +93,6 @@ public class AttributeInnerClasses extends Attribute {
     @Override
     public Dumper dump(Dumper d) {
         return d.print(ATTRIBUTE_NAME);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     public List<InnerClassAttributeInfo> getInnerClassAttributeInfoList() {

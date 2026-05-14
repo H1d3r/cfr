@@ -224,11 +224,7 @@ public class ClassFile implements Dumpable, TypeUsageCollectable {
         final long OFFSET_OF_ATTRIBUTES_COUNT = OFFSET_OF_METHODS + methodsLength;
         final long OFFSET_OF_ATTRIBUTES = OFFSET_OF_ATTRIBUTES_COUNT + 2;
         final int numAttributes = data.getU2At(OFFSET_OF_ATTRIBUTES_COUNT);
-        ArrayList<Attribute> tmpAttributes = new ArrayList<Attribute>();
-        tmpAttributes.ensureCapacity(numAttributes);
-        ContiguousEntityFactory.build(data.getOffsetData(OFFSET_OF_ATTRIBUTES), numAttributes, tmpAttributes,
-                AttributeFactory.getBuilder(constantPool, classFileVersion)
-        );
+        List<Attribute> tmpAttributes = AttributeFactory.readAttributes(data.getOffsetData(OFFSET_OF_ATTRIBUTES), constantPool, classFileVersion, numAttributes);
 
         this.attributes = new AttributeMap(tmpAttributes);
         AccessFlag.applyAttributes(attributes, accessFlags);

@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.benf.cfr.reader.entities.constantpool.ConstantPool;
 import org.benf.cfr.reader.entityfactories.AttributeFactory;
-import org.benf.cfr.reader.entityfactories.ContiguousEntityFactory;
 import org.benf.cfr.reader.util.ClassFileVersion;
 import org.benf.cfr.reader.util.bytestream.ByteData;
 import org.benf.cfr.reader.util.collections.ListFactory;
@@ -13,9 +12,6 @@ import org.benf.cfr.reader.util.output.Dumper;
 
 public class AttributeRecord extends Attribute {
     public static final String ATTRIBUTE_NAME = "Record";
-
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
 
     public static class RecordComponentInfo {
         private final String name;
@@ -42,31 +38,28 @@ public class AttributeRecord extends Attribute {
         }
     }
 
-    private final int length;
     private final List<RecordComponentInfo> componentInfos;
 
     public AttributeRecord(ByteData raw, ConstantPool cp, ClassFileVersion classFileVersion) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
-        int numComponents = raw.getU2At(OFFSET_OF_REMAINDER);
-        long offset = OFFSET_OF_REMAINDER + 2;
+        int numComponents = raw.getU2At(0);
+        long offset = 2;
 
         componentInfos = ListFactory.newList();
         for (int i = 0; i < numComponents; i++) {
-            int nameIndex = raw.getS2At(offset);
+            int nameIndex = raw.getU2At(offset);
             offset += 2;
             String name = cp.getUTF8Entry(nameIndex).getValue();
 
-            int descriptorIndex = raw.getS2At(offset);
+            int descriptorIndex = raw.getU2At(offset);
             offset += 2;
             String descriptor = cp.getUTF8Entry(descriptorIndex).getValue();
 
-            int attributesCount = raw.getS2At(offset);
+            int attributesCount = raw.getU2At(offset);
             offset += 2;
 
-            List<Attribute> attributes = ListFactory.newList();
+            List<Attribute> attributes = ListFactory.newList(attributesCount);
             raw = raw.getOffsetData(offset);
-            offset = ContiguousEntityFactory.build(raw, attributesCount, attributes,
-                    AttributeFactory.getBuilder(cp, classFileVersion));
+            offset = AttributeFactory.readAttributes(raw, cp, classFileVersion, attributesCount, attributes);
 
             componentInfos.add(new RecordComponentInfo(name, descriptor, attributes));
         }
@@ -79,11 +72,6 @@ public class AttributeRecord extends Attribute {
             }
         }
         return Collections.emptyList();
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override

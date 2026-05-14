@@ -9,16 +9,11 @@ import java.util.List;
 public class AttributeLocalVariableTable extends Attribute {
     public final static String ATTRIBUTE_NAME = "LocalVariableTable";
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_ENTRY_COUNT = 6;
-    private static final long OFFSET_OF_ENTRIES = 8;
-    private static final long OFFSET_OF_REMAINDER = 6;
+    private static final long OFFSET_OF_ENTRY_COUNT = 0;
+    private static final long OFFSET_OF_ENTRIES = 2;
     private final List<LocalVariableEntry> localVariableEntryList = ListFactory.newList();
 
-    private final int length;
-
     public AttributeLocalVariableTable(ByteData raw) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numLocalVariables = raw.getU2At(OFFSET_OF_ENTRY_COUNT);
         long offset = OFFSET_OF_ENTRIES;
         for (int x = 0; x < numLocalVariables; ++x) {
@@ -44,10 +39,5 @@ public class AttributeLocalVariableTable extends Attribute {
 
     public List<LocalVariableEntry> getLocalVariableEntryList() {
         return localVariableEntryList;
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 }

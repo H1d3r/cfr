@@ -17,17 +17,12 @@ import java.util.List;
 
 public abstract class AttributeAnnotations extends Attribute implements TypeUsageCollectable {
 
-    private static final long OFFSET_OF_ATTRIBUTE_LENGTH = 2;
-    private static final long OFFSET_OF_REMAINDER = 6;
-    private static final long OFFSET_OF_NUMBER_OF_ANNOTATIONS = 6;
-    private static final long OFFSET_OF_ANNOTATION_TABLE = 8;
+    private static final long OFFSET_OF_NUMBER_OF_ANNOTATIONS = 0;
+    private static final long OFFSET_OF_ANNOTATION_TABLE = 2;
 
     private final List<AnnotationTableEntry> annotationTableEntryList = ListFactory.newList();
 
-    private final int length;
-
     AttributeAnnotations(ByteData raw, ConstantPool cp) {
-        this.length = raw.getS4At(OFFSET_OF_ATTRIBUTE_LENGTH);
         int numAnnotations = raw.getU2At(OFFSET_OF_NUMBER_OF_ANNOTATIONS);
         long offset = OFFSET_OF_ANNOTATION_TABLE;
         for (int x = 0; x < numAnnotations; ++x) {
@@ -63,11 +58,6 @@ public abstract class AttributeAnnotations extends Attribute implements TypeUsag
     public List<AnnotationTableEntry> getEntryList() {
         // Prevent accidental modification
         return Collections.unmodifiableList(annotationTableEntryList);
-    }
-
-    @Override
-    public long getRawByteLength() {
-        return OFFSET_OF_REMAINDER + length;
     }
 
     @Override
