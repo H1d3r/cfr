@@ -1204,7 +1204,7 @@ public class SwitchReplacer {
         // (rather than continuing directly).
 
         if (afterLast == null) return false;
-        Op03SimpleStatement newPostSwitch = new Op03SimpleStatement(afterLast.getBlockIdentifiers(), new IfStatement(BytecodeLoc.NONE, new BooleanExpression(Literal.TRUE)), afterLast.getIndex().justBefore());
+        Op03SimpleStatement newPostSwitch = new Op03SimpleStatement(afterLast.getBlockIdentifiers(), new IfStatement(BytecodeLoc.NONE, BooleanExpression.of(Literal.TRUE)), afterLast.getIndex().justBefore());
         newPostSwitch.addTarget(afterLast);
         newPostSwitch.addTarget(switchStatement);
         afterLast.addSource(newPostSwitch);

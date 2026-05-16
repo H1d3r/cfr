@@ -60,7 +60,7 @@ public class TypedBooleanTidier implements StructuredStatementTransformer, Expre
         if (lhs instanceof ConditionalExpression) {
             res = (ConditionalExpression) lhs;
         } else {
-            res = new BooleanExpression(lhs);
+            res = BooleanExpression.of(lhs);
         }
         if (!b) res = new NotOperation(BytecodeLoc.TODO, res);
         return res;

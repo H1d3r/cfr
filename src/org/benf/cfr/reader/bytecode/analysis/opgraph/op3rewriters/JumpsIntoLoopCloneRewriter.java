@@ -140,7 +140,7 @@ public class JumpsIntoLoopCloneRewriter {
             // else afterwhile
             ConditionalExpression condition = whileStatement.getCondition();
             if (condition == null) {
-                condition = new BooleanExpression(Literal.TRUE);
+                condition = BooleanExpression.of(Literal.TRUE);
             }
             IfStatement newConditionStatement = new IfStatement(BytecodeLoc.TODO, condition);
             // we'll move these indices later.

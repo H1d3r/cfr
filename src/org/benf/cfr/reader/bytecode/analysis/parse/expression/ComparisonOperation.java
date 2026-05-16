@@ -233,12 +233,7 @@ public class ComparisonOperation extends AbstractExpression implements Condition
     }
 
     private ConditionalExpression getConditionalExpression(Expression booleanExpression, BooleanComparisonType booleanComparisonType) {
-        ConditionalExpression res;
-        if (booleanExpression instanceof ConditionalExpression) {
-            res = (ConditionalExpression) booleanExpression;
-        } else {
-            res = new BooleanExpression(booleanExpression);
-        }
+        ConditionalExpression res = BooleanExpression.of(booleanExpression);
         if (booleanComparisonType == BooleanComparisonType.NEGATED) res = res.getNegated();
         return res;
     }

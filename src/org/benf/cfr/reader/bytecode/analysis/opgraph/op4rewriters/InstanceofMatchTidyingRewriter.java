@@ -6,6 +6,7 @@ import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.AssignmentExpression;
+import org.benf.cfr.reader.bytecode.analysis.parse.expression.ConditionalExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressionDefining;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.LValueExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
@@ -78,36 +79,44 @@ public class InstanceofMatchTidyingRewriter {
     }
 
     private class SearchPassRewriter extends AbstractExpressionRewriter {
-        @Override
-        public Expression rewriteExpression(Expression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
-            if (expression instanceof InstanceOfExpressionDefining) {
-                InstanceOfExpressionDefining expressionDefining = (InstanceOfExpressionDefining) expression;
-                Expression lhs = expressionDefining.getLhs();
-                if (lhs instanceof AssignmentExpression && ((AssignmentExpression) lhs).getlValue() instanceof LocalVariable) {
-                    ((AssignmentExpression) lhs).getrValue().applyExpressionRewriter(this, ssaIdentifiers, statementContainer, flags);
-                    removeCandidates.add((LocalVariable) ((AssignmentExpression) lhs).getlValue());
-                    return expression;
-                } else if (last != null && lhs instanceof LValueExpression && ((LValueExpression) lhs).getLValue() instanceof LocalVariable) {
-                    LocalVariable lValue = (LocalVariable)((LValueExpression) lhs).getLValue();
-                    if (last instanceof StructuredAssignment) {
-                        // We can only remove at ths point if Locals (lValue) == 1, in which case we substitute
-                        // rValue for lValue in the instanceof, and decrement the usage to 0.
-                        StructuredAssignment assigment = (StructuredAssignment)last;
-                        Expression rhs = assigment.getRvalue();
-                        if (rhs instanceof LValueExpression &&
-                            ((LValueExpression) rhs).getLValue() instanceof LocalVariable &&
-                            locals.get(lValue) == 1 &&
-                            lValue.equals(assigment.getLvalue())) {
-                            removeCandidates.add(lValue);
-                            locals.remove(lValue);
-                            addDefinition(InstanceofMatchTidyingRewriter.this.last, lValue);
-                            last = null;
-                            return ((InstanceOfExpressionDefining) expression).withReplacedExpression(rhs);
-                        }
+        // Returns the rewritten expression if special handling applied; null to fall through.
+        // InstanceOfExpressionDefining implements ConditionalExpression and only ever occupies
+        // ConditionalExpression-typed slots, so it is only ever reached via the ConditionalExpression
+        // overload of rewriteExpression.
+        private ConditionalExpression handleIfDefining(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            if (!(expression instanceof InstanceOfExpressionDefining)) return null;
+            InstanceOfExpressionDefining expressionDefining = (InstanceOfExpressionDefining) expression;
+            Expression lhs = expressionDefining.getLhs();
+            if (lhs instanceof AssignmentExpression && ((AssignmentExpression) lhs).getlValue() instanceof LocalVariable) {
+                ((AssignmentExpression) lhs).getrValue().applyExpressionRewriter(this, ssaIdentifiers, statementContainer, flags);
+                removeCandidates.add((LocalVariable) ((AssignmentExpression) lhs).getlValue());
+                return expression;
+            } else if (last != null && lhs instanceof LValueExpression && ((LValueExpression) lhs).getLValue() instanceof LocalVariable) {
+                LocalVariable lValue = (LocalVariable)((LValueExpression) lhs).getLValue();
+                if (last instanceof StructuredAssignment) {
+                    // We can only remove at ths point if Locals (lValue) == 1, in which case we substitute
+                    // rValue for lValue in the instanceof, and decrement the usage to 0.
+                    StructuredAssignment assigment = (StructuredAssignment)last;
+                    Expression rhs = assigment.getRvalue();
+                    if (rhs instanceof LValueExpression &&
+                        ((LValueExpression) rhs).getLValue() instanceof LocalVariable &&
+                        locals.get(lValue) == 1 &&
+                        lValue.equals(assigment.getLvalue())) {
+                        removeCandidates.add(lValue);
+                        locals.remove(lValue);
+                        addDefinition(InstanceofMatchTidyingRewriter.this.last, lValue);
+                        last = null;
+                        return expressionDefining.withReplacedExpression(rhs);
                     }
                 }
-
             }
+            return null;
+        }
+
+        @Override
+        public ConditionalExpression rewriteExpression(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            ConditionalExpression handled = handleIfDefining(expression, ssaIdentifiers, statementContainer, flags);
+            if (handled != null) return handled;
             return super.rewriteExpression(expression, ssaIdentifiers, statementContainer, flags);
         }
 
@@ -122,16 +131,21 @@ public class InstanceofMatchTidyingRewriter {
     }
 
     private class AssignRemover extends AbstractExpressionRewriter {
-        @Override
-        public Expression rewriteExpression(Expression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
-            if (expression instanceof InstanceOfExpressionDefining) {
-                InstanceOfExpressionDefining defining = (InstanceOfExpressionDefining) expression;
-                Expression lhs = defining.getLhs();
-                //noinspection SuspiciousMethodCalls
-                if (lhs instanceof AssignmentExpression && removeCandidates.contains(((AssignmentExpression) lhs).getlValue())) {
-                    return defining.withReplacedExpression(((AssignmentExpression) lhs).getrValue());
-                }
+        private ConditionalExpression handleIfDefining(ConditionalExpression expression) {
+            if (!(expression instanceof InstanceOfExpressionDefining)) return null;
+            InstanceOfExpressionDefining defining = (InstanceOfExpressionDefining) expression;
+            Expression lhs = defining.getLhs();
+            //noinspection SuspiciousMethodCalls
+            if (lhs instanceof AssignmentExpression && removeCandidates.contains(((AssignmentExpression) lhs).getlValue())) {
+                return defining.withReplacedExpression(((AssignmentExpression) lhs).getrValue());
             }
+            return null;
+        }
+
+        @Override
+        public ConditionalExpression rewriteExpression(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
+            ConditionalExpression handled = handleIfDefining(expression);
+            if (handled != null) return handled;
             return super.rewriteExpression(expression, ssaIdentifiers, statementContainer, flags);
         }
     }

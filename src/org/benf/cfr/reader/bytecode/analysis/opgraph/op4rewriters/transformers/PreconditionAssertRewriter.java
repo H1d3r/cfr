@@ -46,7 +46,7 @@ public class PreconditionAssertRewriter implements StructuredStatementTransforme
     private Expression test;
 
     public PreconditionAssertRewriter(StaticVariable assertionStatic) {
-        this.test = new NotOperation(BytecodeLoc.NONE, new BooleanExpression(new LValueExpression(assertionStatic)));
+        this.test = new NotOperation(BytecodeLoc.NONE, BooleanExpression.of(new LValueExpression(assertionStatic)));
     }
 
 

@@ -159,7 +159,7 @@ public class SwitchStringRewriter implements Op04Rewriter {
                                         new KleeneStar(
                                                 new ResetAfterTest(wcm3,"r3",
                                                         new MatchSequence(
-                                                                new StructuredIf(BytecodeLoc.NONE, new BooleanExpression(wcm3.getMemberFunction("collision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm3.getExpressionWildCard("stringvalue"))), null),
+                                                                new StructuredIf(BytecodeLoc.NONE, BooleanExpression.of(wcm3.getMemberFunction("collision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm3.getExpressionWildCard("stringvalue"))), null),
                                                                 new BeginBlock(null),
                                                                 new StructuredAssignment(BytecodeLoc.NONE, wcm1.getLValueWildCard("intermed"), wcm3.getExpressionWildCard("case2id")),
                                                                 new StructuredBreak(BytecodeLoc.NONE, wcm1.getBlockIdentifier("switchblock"), true),
@@ -170,13 +170,13 @@ public class SwitchStringRewriter implements Op04Rewriter {
                                         new MatchOneOf(
                                                 // Either an anticollision at the end
                                                 new MatchSequence(
-                                                    new StructuredIf(BytecodeLoc.NONE, new NotOperation(BytecodeLoc.NONE, new BooleanExpression(wcm2.getMemberFunction("anticollision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm2.getExpressionWildCard("stringvalue")))), null),
+                                                    new StructuredIf(BytecodeLoc.NONE, new NotOperation(BytecodeLoc.NONE, BooleanExpression.of(wcm2.getMemberFunction("anticollision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm2.getExpressionWildCard("stringvalue")))), null),
                                                     new StructuredBreak(BytecodeLoc.NONE, wcm1.getBlockIdentifier("switchblock"), true),
                                                     new StructuredAssignment(BytecodeLoc.NONE, wcm1.getLValueWildCard("intermed"), wcm2.getExpressionWildCard("case2id"))
                                                 ),
                                                 // or a final collision.
                                                 new MatchSequence(
-                                                        new StructuredIf(BytecodeLoc.NONE, new BooleanExpression(wcm2.getMemberFunction("collision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm2.getExpressionWildCard("stringvalue"))), null),
+                                                        new StructuredIf(BytecodeLoc.NONE, BooleanExpression.of(wcm2.getMemberFunction("collision", "equals", new LValueExpression(wcm1.getLValueWildCard("stringobject")), wcm2.getExpressionWildCard("stringvalue"))), null),
                                                         new BeginBlock(null),
                                                         new StructuredAssignment(BytecodeLoc.NONE, wcm1.getLValueWildCard("intermed"), wcm2.getExpressionWildCard("case2id")),
                                                         new EndBlock(null)

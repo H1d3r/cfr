@@ -19,9 +19,12 @@ import org.benf.cfr.reader.entities.constantpool.ConstantPoolEntry;
 import org.benf.cfr.reader.entities.constantpool.ConstantPoolEntryClass;
 import org.benf.cfr.reader.state.TypeUsageCollector;
 import org.benf.cfr.reader.util.Troolean;
+import org.benf.cfr.reader.util.collections.SetFactory;
 import org.benf.cfr.reader.util.output.Dumper;
 
-public class InstanceOfExpressionDefining extends AbstractExpression {
+import java.util.Set;
+
+public class InstanceOfExpressionDefining extends AbstractExpression implements ConditionalExpression {
     private Expression lhs;
     // TODO : Replace with pattern.
     private JavaTypeInstance typeInstance;
@@ -88,6 +91,45 @@ public class InstanceOfExpressionDefining extends AbstractExpression {
     @Override
     public void collectUsedLValues(LValueUsageCollector lValueUsageCollector) {
         lhs.collectUsedLValues(lValueUsageCollector);
+    }
+
+    @Override
+    public ConditionalExpression getNegated() {
+        return new NotOperation(BytecodeLoc.NONE, this);
+    }
+
+    @Override
+    public int getSize(Precedence outerPrecedence) {
+        return 1;
+    }
+
+    @Override
+    public ConditionalExpression getDemorganApplied(boolean amNegating) {
+        return amNegating ? getNegated() : this;
+    }
+
+    @Override
+    public ConditionalExpression getRightDeep() {
+        return this;
+    }
+
+    @Override
+    public Set<LValue> getLoopLValues() {
+        Set<LValue> res = SetFactory.newSet();
+        if (lhs instanceof LValueExpression) {
+            res.add(((LValueExpression) lhs).getLValue());
+        }
+        return res;
+    }
+
+    @Override
+    public ConditionalExpression optimiseForType() {
+        return this;
+    }
+
+    @Override
+    public ConditionalExpression simplify() {
+        return this;
     }
 
     public Expression getLhs() {

@@ -39,6 +39,7 @@ public class InstanceOfAssignRewriter {
         @Override
         public Expression rewriteExpression(Expression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
             if (found) return expression;
+            // This shouldn't be possible.
             if (expression instanceof InstanceOfExpression) {
                 found = true;
                 return expression;
@@ -49,6 +50,10 @@ public class InstanceOfAssignRewriter {
         @Override
         public ConditionalExpression rewriteExpression(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
             if (found) return expression;
+            if (expression instanceof InstanceOfExpression) {
+                found = true;
+                return expression;
+            }
             return super.rewriteExpression(expression, ssaIdentifiers, statementContainer, flags);
         }
     }
@@ -88,7 +93,7 @@ public class InstanceOfAssignRewriter {
         // Simple conditional tests.
         // a instanceof Foo && (x = (Foo)a) == a
         // --> a instanceof Foo x
-        BooleanExpression instanceObj = new BooleanExpression(new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, obj, target));
+        ConditionalExpression instanceObj = new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, obj, target);
 
         tests = ListFactory.newList();
         ConditionalExpression cPos1 = new BooleanOperation(BytecodeLoc.NONE,
@@ -110,7 +115,7 @@ public class InstanceOfAssignRewriter {
         CastExpression castTmp = new CastExpression(BytecodeLoc.NONE, ijtTarget, new LValueExpression(tmpWildcard));
 
         ConditionalExpression dPos1 = new BooleanOperation(BytecodeLoc.NONE,
-                new BooleanExpression(new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, new AssignmentExpression(BytecodeLoc.NONE, tmpWildcard, obj), target)),
+                new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, new AssignmentExpression(BytecodeLoc.NONE, tmpWildcard, obj), target),
                 new ComparisonOperation(BytecodeLoc.NONE, new AssignmentExpression(BytecodeLoc.NONE, scopedEntity, castTmp), castTmp, CompOp.EQ),
                 BoolOp.AND
         );
@@ -197,22 +202,22 @@ public class InstanceOfAssignRewriter {
         if (ct.matchType == MatchType.SIMPLE_J14) {
             LValue obj = objWildcard.getMatch();
 
-            ce = new BooleanExpression(new InstanceOfExpressionDefining(BytecodeLoc.TODO,
+            ce = new InstanceOfExpressionDefining(BytecodeLoc.TODO,
                     new InferredJavaType(RawJavaType.BOOLEAN, InferredJavaType.Source.EXPRESSION),
                     new LValueExpression(obj),
                     scopedEntity.getInferredJavaType().getJavaTypeInstance(),
                     scopedEntity
-            ));
+            );
         } else if (ct.matchType == MatchType.ASSIGN_SIMPLE_J14) {
             LValue obj = objWildcard.getMatch();
             LValue tmp = tmpWildcard.getMatch();
 
-            ce = new BooleanExpression(new InstanceOfExpressionDefining(BytecodeLoc.TODO,
+            ce = new InstanceOfExpressionDefining(BytecodeLoc.TODO,
                     new InferredJavaType(RawJavaType.BOOLEAN, InferredJavaType.Source.EXPRESSION),
                     new AssignmentExpression(BytecodeLoc.TODO,tmp, new LValueExpression(BytecodeLoc.TODO,obj)),
                     scopedEntity.getInferredJavaType().getJavaTypeInstance(),
                     scopedEntity
-            ));
+            );
         } else if (ct.matchType == MatchType.SIMPLE_J16) {
             LValue obj = objWildcard.getMatch();
             // Need to keep both sides of existing ce, and MUTATE.
@@ -221,12 +226,12 @@ public class InstanceOfAssignRewriter {
 
             BooleanOperation bo = (BooleanOperation)ce;
 
-            ConditionalExpression newLhs = new BooleanExpression(new InstanceOfExpressionDefining(BytecodeLoc.TODO,
+            ConditionalExpression newLhs = new InstanceOfExpressionDefining(BytecodeLoc.TODO,
                     new InferredJavaType(RawJavaType.BOOLEAN, InferredJavaType.Source.EXPRESSION),
                     new LValueExpression(obj),
                     scopedEntity.getInferredJavaType().getJavaTypeInstance(),
                     scopedEntity
-            ));
+            );
             ConditionalExpression newRhs = new ExpressionReplacingRewriter(originalAssign, new LValueExpression(scopedEntity)).rewriteExpression(bo.getRhs(), null, null, null);
             ce = new BooleanOperation(BytecodeLoc.NONE, newLhs, newRhs, bo.getOp());
         }

@@ -7,6 +7,7 @@ out
 /.classpath
 /.project
 /.settings
+/.claude
 
 # Maven
 /target

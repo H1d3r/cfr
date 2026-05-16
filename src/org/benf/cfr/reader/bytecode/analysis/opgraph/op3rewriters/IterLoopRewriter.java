@@ -291,7 +291,7 @@ public class IterLoopRewriter {
         Pair<ConditionalExpression, ConditionalExpression> condpr = getSplitAnd(condition);
 
         if (!wildcardMatch.match(
-                new BooleanExpression(
+                BooleanExpression.of(
                         wildcardMatch.getMemberFunction("hasnextfn", "hasNext", new LValueExpression(wildcardMatch.getLValueWildCard("iterable")))
                 ),
                 condpr.getFirst())) return;

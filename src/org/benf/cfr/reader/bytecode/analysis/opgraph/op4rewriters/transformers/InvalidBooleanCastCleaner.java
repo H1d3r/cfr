@@ -99,7 +99,7 @@ public class InvalidBooleanCastCleaner extends AbstractExpressionRewriter implem
 
             // No idea - this shouldn't be a bool, though. :(
             if (isBool) {
-                return new TernaryExpression(expression.getLoc(), new BooleanExpression(expression), Literal.INT_ONE, Literal.INT_ZERO);
+                return new TernaryExpression(expression.getLoc(), BooleanExpression.of(expression), Literal.INT_ONE, Literal.INT_ZERO);
             }
             return expression;
         }

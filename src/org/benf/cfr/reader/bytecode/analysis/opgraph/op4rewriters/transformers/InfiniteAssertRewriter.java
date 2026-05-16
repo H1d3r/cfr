@@ -37,8 +37,8 @@ public class InfiniteAssertRewriter implements StructuredStatementTransformer
 
     public InfiniteAssertRewriter(StaticVariable assertionStatic) {
 
-        match1 = new BooleanExpression(new LValueExpression(assertionStatic));
-        match2 = new BooleanOperation(BytecodeLoc.TODO, new BooleanExpression(new LValueExpression(assertionStatic)),
+        match1 = BooleanExpression.of(new LValueExpression(assertionStatic));
+        match2 = new BooleanOperation(BytecodeLoc.TODO, BooleanExpression.of(new LValueExpression(assertionStatic)),
                         wcm1.getConditionalExpressionWildcard("condition"),
                         BoolOp.OR);
         thrw = new StructuredThrow(BytecodeLoc.NONE, wcm1.getConstructorSimpleWildcard("ignore", TypeConstants.ASSERTION_ERROR));

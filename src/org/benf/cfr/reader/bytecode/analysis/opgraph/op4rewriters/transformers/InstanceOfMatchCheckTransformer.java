@@ -187,10 +187,8 @@ public class InstanceOfMatchCheckTransformer implements StructuredStatementTrans
      * need to unwrap.
      */
     private static LValue getDefinedLValue(ConditionalExpression op) {
-        if (!(op instanceof BooleanExpression)) return null;
-        Expression inner = ((BooleanExpression) op).getInner();
-        if (inner instanceof InstanceOfExpressionDefining) {
-            return ((InstanceOfExpressionDefining) inner).getDefines();
+        if (op instanceof InstanceOfExpressionDefining) {
+            return ((InstanceOfExpressionDefining) op).getDefines();
         }
         return null;
     }
@@ -239,10 +237,8 @@ public class InstanceOfMatchCheckTransformer implements StructuredStatementTrans
         Expression castSubject = cast.getChild();
         JavaTypeInstance castType = cast.getInferredJavaType().getJavaTypeInstance();
         for (ConditionalExpression op : operands) {
-            if (!(op instanceof BooleanExpression)) continue;
-            Expression inner = ((BooleanExpression) op).getInner();
-            if (!(inner instanceof InstanceOfExpression)) continue;
-            InstanceOfExpression ioe = (InstanceOfExpression) inner;
+            if (!(op instanceof InstanceOfExpression)) continue;
+            InstanceOfExpression ioe = (InstanceOfExpression) op;
             if (!ioe.getLhs().equals(castSubject)) continue;
             if (!ioe.getTypeInstance().equals(castType)) continue;
             return true;

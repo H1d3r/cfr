@@ -236,7 +236,7 @@ public class CondenseConditionals {
         IfStatement is1 = (IfStatement)s1;
         IfStatement is2 = (IfStatement)s2;
         IfStatement is4 = (IfStatement)s4;
-        ConditionalExpression cond = new BooleanExpression(new TernaryExpression(s1.getLoc(), is1.getCondition(), is4.getCondition(), is2.getCondition().getNegated()));
+        ConditionalExpression cond = BooleanExpression.of(new TernaryExpression(s1.getLoc(), is1.getCondition(), is4.getCondition(), is2.getCondition().getNegated()));
 
         s1c.replaceStatement(new IfStatement(BytecodeLoc.combineShallow(s1, s2, s3, s4), cond));
         s1c.replaceTarget(s4c,y);
@@ -392,7 +392,7 @@ public class CondenseConditionals {
         IfStatement if2 = (IfStatement) ifStatement2.getStatement();
         IfStatement if3 = (IfStatement) ifStatement3.getStatement();
 
-        ConditionalExpression newCond = new BooleanExpression(
+        ConditionalExpression newCond = BooleanExpression.of(
                 new TernaryExpression(BytecodeLoc.combineShallow(if1, if2, if3),
                         if1.getCondition().getNegated().simplify(),
                         if2.getCondition().getNegated().simplify(),
@@ -543,15 +543,8 @@ public class CondenseConditionals {
             //   instanceof T && null != (b = (T)o)
             // Then negate (since the if condition is the negated/jump form):
             //   !(instanceof T && null != (b = (T)o))
-            //
-            // The original condition is already in negated form, e.g.
-            //   !(o instanceof T)  or  (o instanceof T) == false
-            // We need to replace that with the negation of the AND.
-            // Easiest: wrap instanceof in BooleanExpression, AND with nullCheck,
-            // then wrap in NotOperation to get the jump condition.
-            ConditionalExpression instanceOfCond = new BooleanExpression(instanceOf);
             ConditionalExpression combined = new BooleanOperation(
-                    BytecodeLoc.NONE, instanceOfCond, nullCheck, BoolOp.AND);
+                    BytecodeLoc.NONE, instanceOf, nullCheck, BoolOp.AND);
             ConditionalExpression negated = new NotOperation(BytecodeLoc.NONE, combined);
 
             s0.replaceStatement(new IfStatement(BytecodeLoc.NONE, negated));
@@ -589,10 +582,7 @@ public class CondenseConditionals {
     }
 
     private static InstanceOfExpression getPositiveInstanceOf(ConditionalExpression cond) {
-        if (cond instanceof BooleanExpression) {
-            Expression inner = ((BooleanExpression) cond).getInner();
-            if (inner instanceof InstanceOfExpression) return (InstanceOfExpression) inner;
-        }
+        if (cond instanceof InstanceOfExpression) return (InstanceOfExpression) cond;
         return null;
     }
 }

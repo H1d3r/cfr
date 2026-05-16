@@ -3,7 +3,6 @@ package org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.Op04StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.BoolOp;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanOperation;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.ConditionalExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpression;
@@ -36,10 +35,9 @@ public class InstanceOfTreeTransformer implements StructuredStatementTransformer
         public ConditionalExpression rewriteExpression(ConditionalExpression expression, SSAIdentifiers ssaIdentifiers, StatementContainer statementContainer, ExpressionRewriterFlags flags) {
             if (expression instanceof BooleanOperation) {
                 BooleanOperation bo = (BooleanOperation)expression;
-                if (bo.getOp() == BoolOp.AND && bo.getLhs() instanceof BooleanExpression && bo.getRhs() instanceof BooleanOperation) {
-                    BooleanExpression bol = (BooleanExpression)bo.getLhs();
+                if (bo.getOp() == BoolOp.AND && bo.getLhs() instanceof InstanceOfExpression && bo.getRhs() instanceof BooleanOperation) {
                     BooleanOperation bor = (BooleanOperation)bo.getRhs();
-                    if (bor.getOp() == BoolOp.AND && bol.getInner() instanceof InstanceOfExpression) {
+                    if (bor.getOp() == BoolOp.AND) {
                         expression = new BooleanOperation(expression.getLoc(),
                                 new BooleanOperation(expression.getLoc(), bo.getLhs(), bor.getLhs(), BoolOp.AND),
                                 bor.getRhs(), BoolOp.AND);

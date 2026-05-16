@@ -116,7 +116,7 @@ public class JumpsIntoDoRewriter {
                 prev.replaceStatement(new AssignmentSimple(BytecodeLoc.TODO, loopControl, Literal.TRUE));
                 // No, it's not pretty.  But it structures!
                 IfStatement newIf = new IfStatement(BytecodeLoc.TODO, new BooleanOperation(BytecodeLoc.TODO,
-                        new BooleanOperation(BytecodeLoc.TODO, new ComparisonOperation(BytecodeLoc.TODO, new LValueExpression(loopControl), Literal.TRUE, CompOp.EQ), new NotOperation(BytecodeLoc.TODO, new BooleanExpression(new AssignmentExpression(BytecodeLoc.TODO, loopControl, Literal.FALSE))), BoolOp.AND),
+                        new BooleanOperation(BytecodeLoc.TODO, new ComparisonOperation(BytecodeLoc.TODO, new LValueExpression(loopControl), Literal.TRUE, CompOp.EQ), new NotOperation(BytecodeLoc.TODO, BooleanExpression.of(new AssignmentExpression(BytecodeLoc.TODO, loopControl, Literal.FALSE))), BoolOp.AND),
                     prevIf.getCondition(),
                     BoolOp.AND));
                 prevTgt.removeSource(prev);
@@ -208,7 +208,7 @@ public class JumpsIntoDoRewriter {
 
 
                     // No, it's not pretty.  But it structures!
-                    IfStatement newIf = new IfStatement(BytecodeLoc.TODO, new NotOperation(BytecodeLoc.TODO, new BooleanOperation(BytecodeLoc.TODO, new ComparisonOperation(BytecodeLoc.TODO, new LValueExpression(loopControl), Literal.TRUE, CompOp.EQ), new NotOperation(BytecodeLoc.TODO, new BooleanExpression(new AssignmentExpression(BytecodeLoc.TODO, loopControl, Literal.FALSE))), BoolOp.AND)));
+                    IfStatement newIf = new IfStatement(BytecodeLoc.TODO, new NotOperation(BytecodeLoc.TODO, new BooleanOperation(BytecodeLoc.TODO, new ComparisonOperation(BytecodeLoc.TODO, new LValueExpression(loopControl), Literal.TRUE, CompOp.EQ), new NotOperation(BytecodeLoc.TODO, BooleanExpression.of(new AssignmentExpression(BytecodeLoc.TODO, loopControl, Literal.FALSE))), BoolOp.AND)));
                     Op03SimpleStatement newIfStm = new Op03SimpleStatement(first.getBlockIdentifiers(), newIf, first.getSSAIdentifiers(), newDo.getIndex().justAfter());
 
                     newIfStm.addSource(newDo);

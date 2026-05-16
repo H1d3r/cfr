@@ -23,7 +23,18 @@ public class BooleanExpression extends AbstractExpression implements Conditional
     public static final ConditionalExpression TRUE = new BooleanExpression(Literal.TRUE);
     public static final ConditionalExpression FALSE = new BooleanExpression(Literal.FALSE);
 
-    public BooleanExpression(Expression inner) {
+    /*
+     * Use this factory in preference to the constructor. If `inner` is already
+     * a ConditionalExpression the wrap is structural noise — return it
+     * directly. Wrapping is only required to lift a non-conditional Expression
+     * into a ConditionalExpression context.
+     */
+    public static ConditionalExpression of(Expression inner) {
+        if (inner instanceof ConditionalExpression) return (ConditionalExpression) inner;
+        return new BooleanExpression(inner);
+    }
+
+    private BooleanExpression(Expression inner) {
         super(BytecodeLoc.NONE, new InferredJavaType(RawJavaType.BOOLEAN, InferredJavaType.Source.EXPRESSION));
         this.inner = inner;
     }

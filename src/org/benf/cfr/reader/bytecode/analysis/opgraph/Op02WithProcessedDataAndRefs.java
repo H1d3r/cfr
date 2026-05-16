@@ -963,7 +963,7 @@ public class Op02WithProcessedDataAndRefs implements Dumpable, Graph<Op02WithPro
             if (inferredJavaType.getSource() == InferredJavaType.Source.LITERAL) {
                 e.getInferredJavaType().useInArithOp(new InferredJavaType(RawJavaType.INT, InferredJavaType.Source.LITERAL), RawJavaType.INT, true);
             } else {
-                e = new TernaryExpression(BytecodeLoc.NONE, new BooleanExpression(e), Literal.INT_ONE, Literal.INT_ZERO);
+                e = new TernaryExpression(BytecodeLoc.NONE, BooleanExpression.of(e), Literal.INT_ONE, Literal.INT_ZERO);
             }
         }
         return e;

@@ -116,11 +116,8 @@ public class SwitchPatternRewriter  implements Op04Rewriter, StructuredStatement
     boolean extractUnderscores(ConditionalExpression ce, Expression switchValue) {
         ConditionalExpression lhs = (ce instanceof BooleanOperation) ? ((BooleanOperation) ce).getLhs() : ce;
 
-        if (!(lhs instanceof BooleanExpression)) return false;
-        Expression be = ((BooleanExpression) lhs).getInner();
-        if (!(be instanceof InstanceOfExpression)) return false;
-
-        if (!((InstanceOfExpression) be).getLhs().equals(switchValue)) return false;
+        if (!(lhs instanceof InstanceOfExpression)) return false;
+        if (!((InstanceOfExpression) lhs).getLhs().equals(switchValue)) return false;
         // We don't actually (this is lazy and could be tricked) check that these match the types in the case.
         // it's not actually clear why this is here at all, it should be impossible to get here if we don't match
         // expected types.
