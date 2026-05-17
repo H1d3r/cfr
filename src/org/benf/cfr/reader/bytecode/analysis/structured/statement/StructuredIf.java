@@ -111,21 +111,12 @@ public class StructuredIf extends AbstractStructuredStatement implements CanRemo
         }
     }
 
+    // Since j14 (jep305), an instanceof can match a pattern - thus a variable can be defined
+    // inside the test of an instance block (note - this only handles if, we need to extend to
+    // ternaries, loop condition checks etc).
     @Override
     public void traceLocalVariableScope(LValueScopeDiscoverer scopeDiscoverer) {
-        boolean ifCanDefine = scopeDiscoverer.ifCanDefine();
-
-        // JEP 305 is kind of disgusting.  If the test is positive, it means that the
-        // variable exists in the scope of the if statement, otherwise the scope of the else statement.
-        // In practice, we can treat as covering the whole block, ASSUMING we've correctly isolated
-        // variables.
-        if (ifCanDefine) scopeDiscoverer.enterBlock(this);
-        conditionalExpression.collectUsedLValues(scopeDiscoverer);
-        scopeDiscoverer.processOp04Statement(ifTaken);
-        if (elseBlock != null) {
-            scopeDiscoverer.processOp04Statement(elseBlock);
-        }
-        if (ifCanDefine) scopeDiscoverer.leaveBlock(this);
+        InstanceofFlowScope.trace(this, scopeDiscoverer);
     }
 
     // We will be asked if we CAN define something if we're allowing if statements to define

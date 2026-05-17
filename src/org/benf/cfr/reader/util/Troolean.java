@@ -13,6 +13,17 @@ public enum Troolean {
         return a ? TRUE : FALSE;
     }
 
+    public Troolean negate() {
+        switch (this) {
+            case TRUE:
+                return FALSE;
+            case FALSE:
+                return TRUE;
+            default:
+                return NEITHER;
+        }
+    }
+
     public boolean boolValue(boolean ifNeither) {
         switch (this) {
             case TRUE:
