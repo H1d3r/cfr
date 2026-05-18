@@ -72,7 +72,6 @@ public class RedundantPatternSwitchExceptions {
             Op03SimpleStatement catc = entry.getKey();
             List<Op03SimpleStatement> tries = entry.getValue();
             if (catc.getSources().size() == tries.size()) {
-                System.out.println();
                 for (Op03SimpleStatement tri : tries) {
                     tri.removeTarget(catc);
                     catc.removeSource(tri);
