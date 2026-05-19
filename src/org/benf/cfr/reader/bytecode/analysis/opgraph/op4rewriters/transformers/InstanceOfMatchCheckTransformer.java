@@ -22,6 +22,7 @@ import org.benf.cfr.reader.bytecode.analysis.structured.StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.structured.statement.Block;
 import org.benf.cfr.reader.bytecode.analysis.structured.statement.StructuredAssignment;
 import org.benf.cfr.reader.bytecode.analysis.structured.statement.StructuredIf;
+import org.benf.cfr.reader.bytecode.analysis.structured.statement.StructuredWhile;
 import org.benf.cfr.reader.util.collections.ListFactory;
 import org.benf.cfr.reader.util.collections.SetFactory;
 
@@ -84,8 +85,54 @@ public class InstanceOfMatchCheckTransformer implements StructuredStatementTrans
         in.transformStructuredChildren(this, scope);
         if (in instanceof StructuredIf) {
             tidy((StructuredIf) in);
+        } else if (in instanceof StructuredWhile) {
+            tidyWhile((StructuredWhile) in);
         }
         return in;
+    }
+
+    /*
+     * Loop variant: only the redundant-null-check drop (1). The push-down (2) is
+     * deliberately NOT applied to loops - it prepends the absorbed assignment into
+     * the body, but a loop body runs every iteration whereas the condition's
+     * side-effecting assignment runs every test, so pushing it down would change
+     * semantics. Dropping `null != t` where a sibling `instanceof T t` defines t is
+     * always safe (the pattern match proves t non-null).
+     */
+    private static void tidyWhile(StructuredWhile sw) {
+        ConditionalExpression cond = sw.getCondition();
+        if (cond == null) return;
+        ConditionalExpression rebuilt = dropRedundantNullChecks(cond);
+        if (rebuilt != cond) sw.setCondition(rebuilt);
+    }
+
+    private static ConditionalExpression dropRedundantNullChecks(ConditionalExpression cond) {
+        List<ConditionalExpression> operands = ListFactory.newList();
+        flattenAnd(cond, operands);
+        if (operands.size() <= 1) return cond;
+
+        Set<LValue> defined = SetFactory.newSet();
+        for (ConditionalExpression op : operands) {
+            LValue d = getDefinedLValue(op);
+            if (d != null) defined.add(d);
+        }
+
+        boolean changed = false;
+        Iterator<ConditionalExpression> it = operands.iterator();
+        while (it.hasNext()) {
+            LValue v = getNullCheckedLValue(it.next());
+            if (v != null && defined.contains(v)) {
+                it.remove();
+                changed = true;
+            }
+        }
+        if (!changed || operands.isEmpty()) return cond;
+
+        ConditionalExpression rebuilt = operands.get(0);
+        for (int i = 1; i < operands.size(); i++) {
+            rebuilt = new BooleanOperation(BytecodeLoc.NONE, rebuilt, operands.get(i), BoolOp.AND);
+        }
+        return rebuilt;
     }
 
     private static void tidy(StructuredIf sif) {

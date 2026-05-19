@@ -20,15 +20,14 @@ import java.util.List;
  * making the whole `if` a shared scope of both branches (see issue #385 / the
  * lexical-vs-flow-scope problem). It is NEVER linked into the real structured tree
  * and never emitted; it only ever lives transiently on the scope-discoverer's block
- * stack. canDefine / markCreator delegate to the owning StructuredIf so the existing
- * InstanceOfAssignRewriter machinery does the actual condition -> IOED rewrite.
- *
- * TODO: see if we can use this in the other places that match expressions can be used.....
+ * stack. canDefine / markCreator delegate to the owning conditional statement
+ * (StructuredIf, or a loop) so the existing InstanceOfAssignRewriter machinery
+ * does the actual condition -> IOED rewrite.
  */
 public class StructuredScopeEnvelope extends AbstractStructuredStatement {
-    private final StructuredIf owner;
+    private final StructuredStatement owner;
 
-    StructuredScopeEnvelope(StructuredIf owner) {
+    StructuredScopeEnvelope(StructuredStatement owner) {
         super(BytecodeLoc.NONE);
         this.owner = owner;
     }

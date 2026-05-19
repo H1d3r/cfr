@@ -1,7 +1,9 @@
 package org.benf.cfr.reader.bytecode.analysis.structured.statement;
 
 import org.benf.cfr.reader.bytecode.analysis.opgraph.Op04StructuredStatement;
+import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.InstanceOfAssignRewriter;
 import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
+import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanOperation;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.CompOp;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.ComparisonOperation;
@@ -10,7 +12,10 @@ import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressi
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressionDefining;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.Literal;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.NotOperation;
+import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.utils.scope.LValueScopeDiscoverer;
+import org.benf.cfr.reader.bytecode.analysis.parse.utils.scope.ScopeDiscoverInfoCache;
+import org.benf.cfr.reader.bytecode.analysis.structured.StructuredStatement;
 import org.benf.cfr.reader.util.Troolean;
 
 /*
@@ -24,6 +29,51 @@ import org.benf.cfr.reader.util.Troolean;
  */
 class InstanceofFlowScope {
     private enum FlowBranch { TRUE_BRANCH, ELSE_BRANCH, NONE }
+
+    /*
+     * The condition -> IOED lift, shared by every conditional statement (if / loop).
+     * factCache caches "does this condition contain an instanceof" keyed by the owning
+     * statement.
+     */
+    static boolean conditionCanDefine(StructuredStatement owner, ConditionalExpression cond, LValue scopedEntity, ScopeDiscoverInfoCache factCache) {
+        Boolean hasInstanceOf = factCache.get(owner);
+        if (hasInstanceOf == null) {
+            hasInstanceOf = InstanceOfAssignRewriter.hasInstanceOf(cond);
+            factCache.put(owner, hasInstanceOf);
+        }
+        if (!hasInstanceOf) return false;
+        return new InstanceOfAssignRewriter(scopedEntity).isMatchFor(cond);
+    }
+
+    static ConditionalExpression conditionMarkCreator(ConditionalExpression cond, LValue scopedEntity) {
+        return new InstanceOfAssignRewriter(scopedEntity).rewriteDefining(cond);
+    }
+
+    /*
+     * Loop variant of trace(). For `while (o instanceof T t) BODY` the pattern
+     * variable's flow region is the loop BODY (condition true -> enter body, matched;
+     * false -> exit, not in scope after) - directly analogous to an if's then-branch,
+     * so we wrap the body in an envelope. The negated form `while (!(o instanceof T t))`
+     * has its flow region AFTER the loop (continuation that leaks past the loop
+     * lexically) - the envelope can't represent that, so conservatively no lift.
+     * (do-while is not handled here: its condition-bound pattern variable is, by
+     * language rule, in scope only within the condition - there is no body region.)
+     */
+    static void traceLoopBody(StructuredStatement owner, ConditionalExpression cond, Op04StructuredStatement body, LValueScopeDiscoverer scopeDiscoverer) {
+        boolean canDef = scopeDiscoverer.ifCanDefine();
+        FlowBranch flow = (canDef && cond != null) ? instanceofFlowBranch(cond) : FlowBranch.NONE;
+
+        if (flow == FlowBranch.TRUE_BRANCH) {
+            StructuredScopeEnvelope env = newEnvelope(owner);
+            scopeDiscoverer.enterBlock(env);
+            cond.collectUsedLValues(scopeDiscoverer);
+            scopeDiscoverer.processOp04Statement(body);
+            scopeDiscoverer.leaveBlock(env);
+        } else {
+            if (cond != null) cond.collectUsedLValues(scopeDiscoverer);
+            scopeDiscoverer.processOp04Statement(body);
+        }
+    }
 
     static void trace(StructuredIf owner, LValueScopeDiscoverer scopeDiscoverer) {
         ConditionalExpression cond = owner.conditionalExpression;
@@ -58,7 +108,7 @@ class InstanceofFlowScope {
         }
     }
 
-    private static StructuredScopeEnvelope newEnvelope(StructuredIf owner) {
+    private static StructuredScopeEnvelope newEnvelope(StructuredStatement owner) {
         StructuredScopeEnvelope env = new StructuredScopeEnvelope(owner);
         // Wiring it into a transient Op04 sets env.getContainer() so enterBlock can push it.
         new Op04StructuredStatement(env);

@@ -12,6 +12,7 @@ import org.benf.cfr.reader.bytecode.analysis.parse.utils.SSAIdentifiers;
 import org.benf.cfr.reader.bytecode.analysis.structured.StructuredScope;
 import org.benf.cfr.reader.bytecode.analysis.structured.StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.structured.statement.StructuredIf;
+import org.benf.cfr.reader.bytecode.analysis.structured.statement.StructuredWhile;
 
 public class InstanceOfTreeTransformer implements StructuredStatementTransformer {
 
@@ -23,7 +24,10 @@ public class InstanceOfTreeTransformer implements StructuredStatementTransformer
     @Override
     public StructuredStatement transform(StructuredStatement in, StructuredScope scope) {
         in.transformStructuredChildren(this, scope);
-        if (in instanceof StructuredIf) {
+        // StructuredWhile too: rewriteExpressions on a loop rewrites its condition, and the
+        // AND-chain rebalance is what lets the 2-operand SIMPLE_J14/ASSIGN_SIMPLE_J14
+        // patterns match inside a longer `&& … && …` loop condition (older preview bytecode).
+        if (in instanceof StructuredIf || in instanceof StructuredWhile) {
             InstanceTreeRewriter instanceTreeRewriter = new InstanceTreeRewriter();
             in.rewriteExpressions(instanceTreeRewriter);
         }

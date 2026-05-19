@@ -5,7 +5,6 @@ import org.benf.cfr.reader.bytecode.analysis.opgraph.Op04StructuredStatement;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.matchutil.MatchIterator;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.matchutil.MatchResultCollector;
 import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.CanRemovePointlessBlock;
-import org.benf.cfr.reader.bytecode.analysis.opgraph.op4rewriters.transformers.InstanceOfAssignRewriter;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.StatementContainer;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.ConditionalExpression;
@@ -123,18 +122,12 @@ public class StructuredIf extends AbstractStructuredStatement implements CanRemo
     // instanceofs.
     @Override
     public boolean canDefine(LValue scopedEntity, ScopeDiscoverInfoCache factCache) {
-        Boolean hasInstanceOf = factCache.get(this);
-        if (hasInstanceOf == null) {
-            hasInstanceOf = InstanceOfAssignRewriter.hasInstanceOf(this.conditionalExpression);
-            factCache.put(this, hasInstanceOf);
-        }
-        if (!hasInstanceOf) return false;
-        return new InstanceOfAssignRewriter(scopedEntity).isMatchFor(this.conditionalExpression);
+        return InstanceofFlowScope.conditionCanDefine(this, conditionalExpression, scopedEntity, factCache);
     }
 
     @Override
     public void markCreator(LValue scopedEntity, StatementContainer<StructuredStatement> hint) {
-        this.conditionalExpression = new InstanceOfAssignRewriter(scopedEntity).rewriteDefining(this.conditionalExpression);
+        this.conditionalExpression = InstanceofFlowScope.conditionMarkCreator(this.conditionalExpression, scopedEntity);
     }
 
     @Override

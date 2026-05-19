@@ -30,6 +30,10 @@ public abstract class AbstractStructuredConditionalLoopStatement extends Abstrac
         return condition;
     }
 
+    public void setCondition(ConditionalExpression condition) {
+        this.condition = condition;
+    }
+
     @Override
     public BlockIdentifier getBreakableBlockOrNull() {
         return block;
