@@ -125,6 +125,21 @@ public class InstanceOfAssignRewriter {
         tests.add(new ConditionTest(dPos1.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
         tests.add(new ConditionTest(dPos2.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
 
+        // Cast-free variant: a j14+ pattern store binds with a bare astore (the
+        // instanceof proved the narrowing, so javac emits no checkcast):
+        // (a = y) instanceof Foo && (x = a) == a   -->   (a = y) instanceof Foo x
+        Expression bareTmp = new LValueExpression(tmpWildcard);
+        ConditionalExpression ePos1 = new BooleanOperation(BytecodeLoc.NONE,
+                new InstanceOfExpression(BytecodeLoc.NONE, ijtBool, new AssignmentExpression(BytecodeLoc.NONE, tmpWildcard, obj), target),
+                new ComparisonOperation(BytecodeLoc.NONE, new AssignmentExpression(BytecodeLoc.NONE, scopedEntity, bareTmp), bareTmp, CompOp.EQ),
+                BoolOp.AND
+        );
+        ConditionalExpression ePos2 = new NotOperation(BytecodeLoc.NONE, ePos1.getDemorganApplied(true));
+        tests.add(new ConditionTest(ePos1, true, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(ePos2, true, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(ePos1.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
+        tests.add(new ConditionTest(ePos2.getNegated(), false, MatchType.ASSIGN_SIMPLE_J14));
+
         // Later versions of java make the generated code a lot simpler, which is perversely harder to spot.
         // obj instanceof Foo && SOMEEXPRESSIONINVOLVING( x = (Foo)obj )
         // eg:

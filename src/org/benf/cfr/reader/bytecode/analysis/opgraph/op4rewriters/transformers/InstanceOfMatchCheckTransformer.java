@@ -6,7 +6,6 @@ import org.benf.cfr.reader.bytecode.analysis.parse.Expression;
 import org.benf.cfr.reader.bytecode.analysis.parse.LValue;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.AssignmentExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.BoolOp;
-import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.BooleanOperation;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.CastExpression;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.CompOp;
@@ -16,6 +15,7 @@ import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressi
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.InstanceOfExpressionDefining;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.Literal;
 import org.benf.cfr.reader.bytecode.analysis.parse.expression.LValueExpression;
+import org.benf.cfr.reader.bytecode.analysis.parse.lvalue.LocalVariable;
 import org.benf.cfr.reader.bytecode.analysis.types.JavaTypeInstance;
 import org.benf.cfr.reader.bytecode.analysis.structured.StructuredScope;
 import org.benf.cfr.reader.bytecode.analysis.structured.StructuredStatement;
@@ -86,9 +86,58 @@ public class InstanceOfMatchCheckTransformer implements StructuredStatementTrans
         if (in instanceof StructuredIf) {
             tidy((StructuredIf) in);
         } else if (in instanceof StructuredWhile) {
+            liftLoopPatternStore((StructuredWhile) in);
             tidyWhile((StructuredWhile) in);
         }
         return in;
+    }
+
+    /*
+     * Loop pattern-store recovery. A `while (subject instanceof T) { v = subject; ... }`
+     * cannot be reached by the standard absorb/lift pipeline: javac emits a bare astore
+     * for the j16+ pattern bind (no checkcast - the instanceof proved the narrowing),
+     * so condenseInstanceOfAssign refuses to absorb the body-leading store (it requires
+     * an explicit `(T)subject` cast). The if-case happens to work because the j16 lift
+     * is unnecessary there (the body's `T v = subject` is legal). In a loop body it is
+     * NOT legal Java (Object -> T without a cast), so the output is uncompilable -
+     * and a body-only v is exactly what should become the pattern variable. Build the
+     * IOED here so the flow-scope envelope can pick up v as the body-scoped pattern var.
+     */
+    private static void liftLoopPatternStore(StructuredWhile sw) {
+        ConditionalExpression cond = sw.getCondition();
+        if (!(cond instanceof InstanceOfExpression)) return;
+        InstanceOfExpression ioe = (InstanceOfExpression) cond;
+        Op04StructuredStatement bodyContainer = sw.getBody();
+        if (bodyContainer == null) return;
+        StructuredStatement body = bodyContainer.getStatement();
+        Op04StructuredStatement firstContainer;
+        StructuredStatement first;
+        if (body instanceof Block) {
+            List<Op04StructuredStatement> kids = ((Block) body).getBlockStatements();
+            if (kids.isEmpty()) return;
+            firstContainer = kids.get(0);
+            first = firstContainer.getStatement();
+        } else {
+            firstContainer = bodyContainer;
+            first = body;
+        }
+        if (!(first instanceof StructuredAssignment)) return;
+        StructuredAssignment sa = (StructuredAssignment) first;
+        LValue lvalue = sa.getLvalue();
+        if (!(lvalue instanceof LocalVariable)) return;
+        Expression rvalue = sa.getRvalue();
+        if (!ioe.getLhs().equals(rvalue)) return;
+        // Type must match the instanceof - a wider type would require a checkcast.
+        if (!lvalue.getInferredJavaType().getJavaTypeInstance().equals(ioe.getTypeInstance())) return;
+
+        InstanceOfExpressionDefining ioed = new InstanceOfExpressionDefining(
+                BytecodeLoc.NONE,
+                ioe.getInferredJavaType(),
+                ioe.getLhs(),
+                ioe.getTypeInstance(),
+                lvalue);
+        sw.setCondition(ioed);
+        firstContainer.nopOut();
     }
 
     /*
